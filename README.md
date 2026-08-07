@@ -1,46 +1,42 @@
-# Velocity — Setup & Deploy
+# VelocityAE
 
-## 1. Open in VS Code
-Unzip/copy this `velocity` folder somewhere on your machine, then open it in
-VS Code (`File → Open Folder`). `CLAUDE.md` will give any AI coding assistant
-in VS Code full context on the project automatically.
+A map-based dashboard for discovering run clubs around Dubai.
 
-## 2. Create the GitHub repo
-1. Go to https://github.com/new
-2. Name it (e.g. `velocity-dashboard`), keep it **Public** (required for free
-   GitHub Pages on a personal account), don't initialize with a README (you
-   already have one).
-3. Click **Create repository**.
+## What it is
 
-## 3. Push your code
-In the `velocity` folder, open a terminal in VS Code and run:
-```bash
-git init
-git add .
-git commit -m "Initial Velocity dashboard"
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/velocity-dashboard.git
-git push -u origin main
-```
+Velocity shows run clubs on an interactive map — click a pin to see a club's
+usual meeting spot, pace, run day/time, and a link to their Instagram,
+WhatsApp channel, or registration page. Instead of digging through scattered
+updates across Instagram, WhatsApp, Strava clubs, Telegram groups, or Meetup
+pages to figure out where and when a club is running, it's all in one place.
 
-## 4. Enable GitHub Pages
-1. On GitHub, go to your repo → **Settings → Pages**
-2. Under "Build and deployment", set **Source** to `Deploy from a branch`
-3. Set branch to `main`, folder to `/ (root)`, click **Save**
-4. Wait ~1 minute — your site will be live at:
-   `https://YOUR-USERNAME.github.io/velocity-dashboard/`
+The standout feature is **Run Now** — a button that checks the current time
+against every club's weekly schedule and surfaces anything running within the
+next few hours, sorted by distance if you share your location. It's built for
+the moment someone thinks "I want to run right now, who's out there?"
 
-## 5. Updating club data later
-Go to `clubs.json` in your repo on GitHub, click the pencil (edit) icon,
-make your change, commit directly to `main`. The live site rebuilds
-automatically within about a minute — no need to touch VS Code for a quick
-data update.
+This started as a personal/friends-use prototype for a small, hand-picked set
+of Dubai run clubs, with the data updated manually. It's also meant to be an
+easy way for someone new to Dubai to find a run club to join in under 60
+seconds, without digging through Instagram and WhatsApp. The longer-term
+vision is a full "Google Maps for run clubs" — covering many more clubs,
+letting club organizers manage their own listings, adding user preferences
+(pace, run type) and community ratings, and eventually growing into the kind
+of platform that could be pitched to investors.
 
-## Notes
-- Location permission for "Run Now" only works over **https** (which GitHub
-  Pages provides) — it won't prompt for location if you just open
-  `index.html` locally via `file://`. To test locally with location working,
-  run a local server instead, e.g. `python3 -m http.server` then visit
-  `http://localhost:8000`.
-- If a friend denies location permission, Run Now still works — it just
-  sorts by soonest time instead of distance.
+## Features
+
+- **Interactive map** — every club plotted as a pin around Dubai
+- **Club detail panel** — pace, run type, usual day/time, location, and a
+  direct link to the club (Instagram, WhatsApp, or registration page)
+- **Run Now** — time-aware matching against each club's weekly schedule, with
+  optional location-based distance sorting
+- **Purple/orange themed UI** — light background, Space Grotesk + Inter type
+
+## Tech
+
+Plain HTML/CSS/JS, Leaflet.js + OpenStreetMap for the map, no backend — club
+data lives in `clubs.json` and is hosted as a static site on GitHub Pages.
+
+See `CLAUDE.md` for the technical breakdown (file structure, data schema, and
+how the Run Now logic works) if you're picking this up in an editor.
