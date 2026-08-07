@@ -1,0 +1,41 @@
+[
+  {
+    "name": "ON Run Club",
+    "location_name": "Orto Cafe, Jumeirah",
+    "lat": 25.1950095,
+    "lng": 55.2357981,
+    "pace": "easy / social",
+    "type": "social",
+    "day": "saturday",
+    "time": "05:45",
+    "link": "https://onrunclubdxb.splashthat.eu",
+    "notes": "",
+    "last_updated": "2026-08-05"
+  },
+  {
+    "name": "The Uncommon Club",
+    "location_name": "Kite Beach",
+    "lat": 25.1647598,
+    "lng": 55.2076246,
+    "pace": "easy / social",
+    "type": "social",
+    "day": "thursday",
+    "time": "05:45",
+    "link": "https://www.instagram.com/theeuncommonclub",
+    "notes": "",
+    "last_updated": "2026-08-05"
+  },
+  {
+    "name": "Frame Run Club",
+    "location_name": "Dubai Design District",
+    "lat": 25.1866742,
+    "lng": 55.3019726,
+    "pace": "training",
+    "type": "training",
+    "day": "wednesday",
+    "time": "19:30",
+    "link": "https://www.instagram.com/framerunclub",
+    "notes": "",
+    "last_updated": "2026-08-05"
+  }
+]
