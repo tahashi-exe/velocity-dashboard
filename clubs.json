@@ -37,5 +37,19 @@
     "link": "https://www.instagram.com/framerunclub",
     "notes": "",
     "last_updated": "2026-08-05"
+  },
+   {
+    "name": "LFG",
+    "location_name": "Gems World Academy",
+    "lat": 25.08245633476715, 
+    "lng": 55.21956164418061
+    "pace": "training",
+    "type": "track",
+    "day": "wednesday",
+    "time": "19:30",
+    "link": "https://www.instagram.com/lfgdubai?igsh=NzhpbmJsZTU3NnIx",
+    "notes": "",
+    "last_updated": "2026-08-07"
   }
+  
 ]
