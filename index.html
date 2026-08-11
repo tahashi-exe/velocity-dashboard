@@ -21,29 +21,53 @@
   <button id="lets-run-btn" class="landing-cta">Let's Run?</button>
 </div>
 
+<!-- Onboarding modal -->
+<div id="onboarding-modal" class="modal-overlay" aria-hidden="true">
+  <div class="modal-card">
+    <div id="onboarding-steps"></div>
+  </div>
+</div>
+
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark">V</span>
     <span class="brand-name">Velocity</span>
   </div>
-  <button id="run-now-btn" class="run-now-btn">
-    <span class="run-now-dot"></span>
-    Run Now
-  </button>
+  <div class="topbar-actions">
+    <button id="filters-btn" class="icon-btn" aria-label="Filters">☰</button>
+    <button id="run-now-btn" class="run-now-btn">
+      <span class="run-now-dot"></span>
+      Run Now
+    </button>
+    <button id="profile-btn" class="icon-btn profile-btn" aria-label="Profile">👤</button>
+  </div>
 </header>
 
 <main id="map"></main>
 
-<!-- Club detail panel -->
-<aside id="club-panel" class="panel" aria-hidden="true">
+<!-- List / Map bottom sheet -->
+<section id="list-sheet" class="list-sheet">
+  <div id="sheet-handle" class="sheet-handle"><span class="handle-bar"></span></div>
+  <div id="this-week-banner" class="this-week-banner"></div>
+  <div id="list-content" class="list-content"></div>
+</section>
+
+<!-- Club/event detail panel -->
+<aside id="club-panel" class="panel panel-left" aria-hidden="true">
   <button id="close-panel" class="panel-close" aria-label="Close">&times;</button>
   <div id="club-panel-content"></div>
 </aside>
 
 <!-- Run Now results panel -->
-<aside id="runnow-panel" class="panel" aria-hidden="true">
+<aside id="runnow-panel" class="panel panel-left" aria-hidden="true">
   <button id="close-runnow" class="panel-close" aria-label="Close">&times;</button>
   <div id="runnow-content"></div>
+</aside>
+
+<!-- Filters panel -->
+<aside id="filters-panel" class="panel panel-right" aria-hidden="true">
+  <button id="close-filters" class="panel-close" aria-label="Close">&times;</button>
+  <div id="filters-content"></div>
 </aside>
 
 <div id="overlay" class="overlay"></div>

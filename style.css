@@ -144,25 +144,33 @@ html, body {
   background: var(--lime-dark);
 }
 
-/* Side panels — now on the LEFT */
+/* Side panels */
 .panel {
   position: fixed;
-  top: 0; left: 0;
+  top: 0;
   width: 380px;
   max-width: 92vw;
   height: 100%;
   background: var(--surface);
-  box-shadow: 8px 0 30px rgba(0,0,0,0.15);
   z-index: 2000;
   padding: 28px 24px;
-  transform: translateX(-100%);
   transition: transform 0.25s ease;
   overflow-y: auto;
 }
 
-.panel.open {
-  transform: translateX(0);
+.panel-left {
+  left: 0;
+  box-shadow: 8px 0 30px rgba(0,0,0,0.15);
+  transform: translateX(-100%);
 }
+.panel-left.open { transform: translateX(0); }
+
+.panel-right {
+  right: 0;
+  box-shadow: -8px 0 30px rgba(0,0,0,0.15);
+  transform: translateX(100%);
+}
+.panel-right.open { transform: translateX(0); }
 
 .panel-close {
   position: absolute;
@@ -382,3 +390,265 @@ html, body {
   .panel { width: 100%; }
   .landing-title { font-size: 34px; }
 }
+
+/* ===== Additional styles: onboarding, list sheet, filters, colored pins ===== */
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.icon-btn:hover { background: var(--purple-tint); }
+
+/* Colored pins */
+.club-marker.color-red { background: #DC2626; }
+.club-marker.color-black { background: #111111; }
+.club-marker.color-white { background: #FFFFFF; border-color: #6B7280; }
+.club-marker.color-green { background: var(--lime-dark); }
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.legend-dot.red { background: #DC2626; }
+.legend-dot.black { background: #111111; }
+.legend-dot.white { background: #FFFFFF; border: 1px solid #6B7280; }
+.legend-dot.green { background: var(--lime-dark); }
+
+/* Onboarding modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 27, 46, 0.55);
+  z-index: 4000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+
+.modal-card {
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 28px 26px;
+  width: 420px;
+  max-width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+
+.ob-step-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--purple-dark);
+  margin: 0 0 4px;
+}
+.ob-step-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin: 0 0 20px;
+}
+
+.ob-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  margin-bottom: 14px;
+}
+
+.ob-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.ob-option {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.ob-option.selected {
+  background: var(--purple);
+  border-color: var(--purple);
+  color: white;
+}
+
+.ob-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.ob-btn {
+  border: none;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ob-btn.primary { background: var(--lime); color: var(--purple-dark); }
+.ob-btn.secondary { background: none; color: var(--text-muted); }
+
+.ob-progress {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+/* List / map bottom sheet */
+.list-sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 78vh;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -6px 24px rgba(0,0,0,0.15);
+  z-index: 900;
+  transform: translateY(calc(100% - 96px));
+  transition: transform 0.25s ease;
+  touch-action: none;
+  display: flex;
+  flex-direction: column;
+}
+.list-sheet.expanded { transform: translateY(0); }
+
+.sheet-handle {
+  padding: 14px 0 8px;
+  display: flex;
+  justify-content: center;
+  cursor: grab;
+  flex-shrink: 0;
+}
+.handle-bar {
+  width: 40px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.this-week-banner {
+  margin: 0 20px 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--purple-tint);
+  color: var(--purple-dark);
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.list-content {
+  overflow-y: auto;
+  padding: 0 20px 24px;
+  flex: 1;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.list-row-info { flex: 1; }
+.list-row-name { font-weight: 700; font-size: 15px; }
+.list-row-meta { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-top: 2px; }
+
+/* Filters panel */
+.filter-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 22px 0 10px;
+}
+
+.filter-toggle-row {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-toggle {
+  flex: 1;
+  text-align: center;
+  padding: 11px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.filter-toggle.active { background: var(--purple); color: white; border-color: var(--purple); }
+
+.locked-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1.5px dashed var(--border);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.locked-chip .lock-icon { font-size: 13px; }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--purple-dark);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 6000;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
