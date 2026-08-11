@@ -38,5 +38,14 @@ of platform that could be pitched to investors.
 Plain HTML/CSS/JS, Leaflet.js + OpenStreetMap for the map, no backend — club
 data lives in `clubs.json` and is hosted as a static site on GitHub Pages.
 
+## Private Telegram update bot
+
+The optional private Telegram bot in [`telegram-bot/`](telegram-bot/) lets the
+project owner send club/event updates from Telegram, review an AI-structured
+preview, and approve a GitHub commit to `clubs.json` or `events.json`. It is a
+separate Node.js process; no secrets are exposed to the static site.
+
+See [`telegram-bot/README.md`](telegram-bot/README.md) for setup and daily use.
+
 See `CLAUDE.md` for the technical breakdown (file structure, data schema, and
 how the Run Now logic works) if you're picking this up in an editor.

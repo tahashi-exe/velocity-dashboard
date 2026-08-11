@@ -189,44 +189,53 @@ function openDetailPanel(item) {
 
 document.getElementById('run-now-btn').addEventListener('click', handleRunNow);
 
+let runNowPool = [];
+let runNowUsingSoon = false;
+let runNowUserLoc = null;
+let runNowSortMode = 'time'; // 'time' | 'distance'
+
 function handleRunNow() {
   runnowContent.innerHTML = `<div class="empty-state"><div class="emoji">📍</div><p>Finding runs near you…</p></div>`;
   openPanel(runnowPanel);
+  runNowSortMode = 'time';
 
   if (!navigator.geolocation) {
-    showRunNowResults(null);
+    computeRunNow(null);
     return;
   }
   navigator.geolocation.getCurrentPosition(
-    pos => showRunNowResults({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-    () => showRunNowResults(null),
+    pos => computeRunNow({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+    () => computeRunNow(null),
     { timeout: 8000 }
   );
 }
 
-function showRunNowResults(userLoc) {
+function computeRunNow(userLoc) {
   const now = new Date();
   const scored = visibleItems()
     .map(item => ({ item, status: getItemStatus(item, now) }))
     .filter(s => s.status.phase !== 'expired');
 
-  let soon = scored.filter(s => s.status.phase === 'soon');
-  let pool = soon.length > 0 ? soon : scored;
-  let headerNote = soon.length > 0
-    ? `running soon${userLoc ? ', nearest first' : ''}`
-    : `nothing running in the next few hours — closest upcoming${userLoc ? ', nearest first' : ''}`;
+  const soon = scored.filter(s => s.status.phase === 'soon');
+  runNowUsingSoon = soon.length > 0;
+
+  // Time priority is always the base set: soonest-running clubs if any exist,
+  // otherwise the closest upcoming ones (capped so the list stays useful).
+  let pool = runNowUsingSoon
+    ? [...soon].sort((a, b) => a.status.minutesDiff - b.status.minutesDiff)
+    : [...scored].sort((a, b) => a.status.minutesDiff - b.status.minutesDiff).slice(0, 8);
 
   if (userLoc) {
     pool.forEach(s => { s.distanceKm = haversineKm(userLoc.lat, userLoc.lng, s.item.lat, s.item.lng); });
-    pool = soon.length > 0
-      ? [...pool].sort((a, b) => a.distanceKm - b.distanceKm)
-      : [...pool].sort((a, b) => a.status.minutesDiff - b.status.minutesDiff).slice(0, 5)
-          .sort((a, b) => a.distanceKm - b.distanceKm);
-  } else {
-    pool = [...pool].sort((a, b) => a.status.minutesDiff - b.status.minutesDiff).slice(0, 5);
   }
 
-  if (pool.length === 0) {
+  runNowPool = pool;
+  runNowUserLoc = userLoc;
+  renderRunNowPanel();
+}
+
+function renderRunNowPanel() {
+  if (runNowPool.length === 0) {
     runnowContent.innerHTML = `
       <div class="runnow-header">Run Now</div>
       <div class="empty-state">
@@ -237,10 +246,28 @@ function showRunNowResults(userLoc) {
     return;
   }
 
+  const sorted = [...runNowPool].sort((a, b) =>
+    runNowSortMode === 'distance' && runNowUserLoc
+      ? a.distanceKm - b.distanceKm
+      : a.status.minutesDiff - b.status.minutesDiff
+  );
+
+  const headerNote = runNowUsingSoon
+    ? 'running soon'
+    : 'nothing running in the next few hours — closest upcoming';
+
+  const sortToggle = runNowUserLoc ? `
+    <div class="filter-toggle-row" style="margin-bottom:16px;">
+      <div class="filter-toggle${runNowSortMode === 'time' ? ' active' : ''}" id="sort-time">Soonest first</div>
+      <div class="filter-toggle${runNowSortMode === 'distance' ? ' active' : ''}" id="sort-distance">Nearest first</div>
+    </div>
+  ` : '';
+
   runnowContent.innerHTML = `
     <div class="runnow-header">Run Now</div>
-    <div class="runnow-sub">${pool.length} ${pool.length > 1 ? 'options' : 'option'} — ${headerNote}</div>
-    ${pool.map(s => `
+    <div class="runnow-sub">${sorted.length} ${sorted.length > 1 ? 'options' : 'option'} — ${headerNote}</div>
+    ${sortToggle}
+    ${sorted.map(s => `
       <div class="runnow-card">
         <span class="runnow-status">${s.status.phase === 'soon' ? s.status.label : 'Next up: ' + s.status.label}</span>
         <div class="club-title">${s.item.name}</div>
@@ -249,6 +276,11 @@ function showRunNowResults(userLoc) {
       </div>
     `).join('')}
   `;
+
+  if (runNowUserLoc) {
+    document.getElementById('sort-time').addEventListener('click', () => { runNowSortMode = 'time'; renderRunNowPanel(); });
+    document.getElementById('sort-distance').addEventListener('click', () => { runNowSortMode = 'distance'; renderRunNowPanel(); });
+  }
 }
 
 /* ---------- List / Map sheet ---------- */

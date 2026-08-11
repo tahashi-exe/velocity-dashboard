@@ -85,11 +85,14 @@ Unified for both recurring and one-off items. Returns `phase`: `'soon'`
 (within the -60/+180 min window), `'upcoming'` (next occurrence found but
 outside that window), or `'expired'` (one-off event already passed).
 
-## Run Now (script.js: `showRunNowResults`)
+## Run Now (script.js: `computeRunNow` / `renderRunNowPanel`)
 Per PRD.md §4.8 — always returns a result if any non-expired item exists:
 prefers items in `'soon'` phase; if none, falls back to the closest
-`'upcoming'` items instead of returning empty. Sorts by distance if location
-is granted, else by time.
+`'upcoming'` items instead of returning empty. **Default sort is always by
+time** (soonest first) — this was previously bugged to sort by distance
+whenever location was granted, burying time-critical runs. Location is now
+a separate, explicit toggle ("Nearest first") shown only when location
+permission is granted, so distance sorting is opt-in, not automatic.
 
 ## List / Map sheet
 `#list-sheet` — a bottom sheet toggled by tapping the handle (basic
