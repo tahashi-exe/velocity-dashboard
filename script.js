@@ -21,11 +21,16 @@ function initMap() {
   }).addTo(map);
 }
 
-function purpleIcon(active) {
+function purpleIcon(active, name) {
   return L.divIcon({
     className: '',
-    html: `<div class="club-marker${active ? ' active' : ''}"></div>`,
-    iconSize: [30, 30],
+    html: `
+      <div class="club-marker-wrap">
+        <div class="marker-label">${name}</div>
+        <div class="club-marker${active ? ' active' : ''}"></div>
+      </div>
+    `,
+    iconSize: [30, 56],
     iconAnchor: [15, 28]
   });
 }
@@ -43,7 +48,7 @@ function renderMarkers() {
   markers = [];
   clubs.forEach(club => {
     const status = getRunStatus(club, new Date());
-    const marker = L.marker([club.lat, club.lng], { icon: purpleIcon(status.isSoon) }).addTo(map);
+    const marker = L.marker([club.lat, club.lng], { icon: purpleIcon(status.isSoon, club.name) }).addTo(map);
     marker.on('click', () => openClubPanel(club));
     markers.push(marker);
   });
@@ -56,7 +61,7 @@ function openClubPanel(club) {
   clubPanelContent.innerHTML = `
     <div class="tag-row">
       <span class="tag">${club.type}</span>
-      <span class="tag orange">${club.pace}</span>
+      <span class="tag lime">${club.pace}</span>
     </div>
     <div class="club-title">${club.name}</div>
     <div class="club-location">${club.location_name}</div>
@@ -206,6 +211,14 @@ function closeAllPanels() {
 document.getElementById('close-panel').addEventListener('click', closeAllPanels);
 document.getElementById('close-runnow').addEventListener('click', closeAllPanels);
 overlay.addEventListener('click', closeAllPanels);
+
+/* ---------- Landing page ---------- */
+
+const landingPage = document.getElementById('landing-page');
+
+document.getElementById('lets-run-btn').addEventListener('click', () => {
+  landingPage.classList.add('hidden');
+});
 
 /* ---------- Init ---------- */
 
