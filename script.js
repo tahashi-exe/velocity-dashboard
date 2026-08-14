@@ -451,6 +451,24 @@ document.getElementById('profile-btn').addEventListener('click', () => {
   openOnboarding(getPrefs() || {});
 });
 
+/* ---------- Legend popover ---------- */
+
+const legendBtn = document.getElementById('legend-btn');
+const legendPopover = document.getElementById('legend-popover');
+
+legendBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isOpen = legendPopover.classList.toggle('open');
+  legendBtn.setAttribute('aria-expanded', String(isOpen));
+});
+
+document.addEventListener('click', (e) => {
+  if (!legendPopover.classList.contains('open')) return;
+  if (e.target === legendBtn || legendPopover.contains(e.target)) return;
+  legendPopover.classList.remove('open');
+  legendBtn.setAttribute('aria-expanded', 'false');
+});
+
 /* ---------- Filters panel ---------- */
 
 const WELLNESS_LOCKED = ['Yoga', 'Pilates', 'Recovery Hubs', 'Other Sports'];
