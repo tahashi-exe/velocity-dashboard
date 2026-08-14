@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "dotenv": "^17.2.3",
-    "grammy": "^1.38.2",
-    "openai": "^5.19.1"
+    "grammy": "^1.38.2"
   },
   "engines": {
     "node": ">=20"

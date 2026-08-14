@@ -40,10 +40,11 @@ data lives in `clubs.json` and is hosted as a static site on GitHub Pages.
 
 ## Private Telegram update bot
 
-The optional private Telegram bot in [`telegram-bot/`](telegram-bot/) lets the
-project owner send club/event updates from Telegram, review an AI-structured
-preview, and approve a GitHub commit to `clubs.json` or `events.json`. It is a
-separate Node.js process; no secrets are exposed to the static site.
+The optional private Telegram bot in [`telegram-bot/`](telegram-bot/) sends
+the project owner a fill-in-the-blanks template for a club or event, then
+publishes it to `clubs.json` or `events.json` with a GitHub commit once the
+owner approves the preview. No AI involved — it's a separate Node.js process
+with no secrets exposed to the static site.
 
 See [`telegram-bot/README.md`](telegram-bot/README.md) for setup and daily use.
 

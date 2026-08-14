@@ -102,10 +102,15 @@ with a "runs this week" count banner at the top (items within 7 days).
 ## How data gets updated
 Manual: edit `clubs.json`/`events.json` directly in GitHub's web editor,
 commit — GitHub Pages rebuilds in about a minute.
-**Planned:** Telegram bot with AI parsing writes directly via GitHub's API
-(PRD.md §10) — see `/telegram-bot` folder once built for the bot code and
-its own setup instructions (separate hosting required, cannot run on GitHub
-Pages).
+
+**Telegram bot** (`/telegram-bot`): a private always-on Node process (grammy),
+separate from this static site, deliberately with no AI/API dependency. It
+sends the owner a fill-in-the-blanks template for a club or event, the owner
+edits values in Telegram and sends it back, the bot deterministically parses
+and validates it (`telegram-bot/src/template.js`), shows a preview, and only
+commits via GitHub's Contents API (`telegram-bot/src/github.js`) after an
+explicit Approve tap. Deployed on Railway (root directory `telegram-bot`) —
+see `telegram-bot/README.md` for setup and daily use.
 
 ## Conventions
 - Keep dependency-light; no framework unless the project clearly outgrows it.
@@ -124,7 +129,8 @@ Pages).
       Run Now fallback logic, one-off events data model, color-coded pins
 - [ ] Supabase backend, sign-up/auth, RSVPs, reviews
 - [ ] PWA manifest for iOS install
-- [ ] Telegram bot (in progress — see /telegram-bot)
+- [x] Telegram bot — template-based (no AI), pending Railway deployment
+      and first real-world use (see /telegram-bot)
 - [ ] Freebies page
 - [ ] Glowing GPX routes (pending GPX files from Taha)
 

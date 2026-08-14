@@ -1,15 +1,9 @@
 import 'dotenv/config'
 import { Bot, InlineKeyboard } from 'grammy'
-import { extractProposal } from './extract.js'
+import { buildTemplate, parseTemplate, recordSummary } from './template.js'
 import { getJsonFile, updateJsonFile } from './github.js'
 
-const required = [
-  'TELEGRAM_BOT_TOKEN',
-  'TELEGRAM_ADMIN_CHAT_ID',
-  'GITHUB_TOKEN',
-  'GITHUB_REPOSITORY',
-  'OPENAI_API_KEY',
-]
+const required = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ADMIN_CHAT_ID', 'GITHUB_TOKEN', 'GITHUB_REPOSITORY']
 
 for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing required environment variable: ${key}`)
@@ -18,6 +12,10 @@ for (const key of required) {
 const bot = new Bot(process.env.TELEGRAM_BOT_TOKEN)
 const adminChatId = String(process.env.TELEGRAM_ADMIN_CHAT_ID)
 const branch = process.env.GITHUB_BRANCH || 'main'
+
+// chatId -> { collection: 'clubs' | 'events', action: 'add' | 'update', matchName: string | null }
+const awaitingTemplate = new Map()
+// proposalId -> { collection, action, matchName, record }
 const pending = new Map()
 
 function todayInDubai() {
@@ -26,107 +24,43 @@ function todayInDubai() {
   }).format(new Date())
 }
 
-function isValidRecord(proposal) {
-  const { collection, record } = proposal
-  const common = ['name', 'location_name', 'lat', 'lng', 'pace', 'type', 'surface', 'freebies', 'time', 'link']
-  const schedule = collection === 'clubs' ? ['day'] : ['date']
-  const missing = [...common, ...schedule].filter((field) => record[field] === null || record[field] === '')
-  if (!Number.isFinite(record.lat) || !Number.isFinite(record.lng)) {
-    if (!missing.includes('lat')) missing.push('lat')
-    if (!missing.includes('lng')) missing.push('lng')
-  }
-  return missing
-}
-
-function proposalMessage(proposal) {
-  const target = proposal.collection === 'clubs' ? 'clubs.json' : 'events.json'
-  return [
-    `Proposed ${proposal.action} to ${target}`,
-    proposal.summary,
-    '',
-    proposal.record_summary,
-  ].join('\n')
-}
-
 function randomId() {
   return Math.random().toString(36).slice(2, 10)
 }
 
-async function getImageDataUrl(ctx) {
-  const photo = ctx.message?.photo?.at(-1)
-  if (!photo) return null
-  const file = await bot.api.getFile(photo.file_id)
-  if (!file.file_path) throw new Error('Telegram did not return an image path.')
-  const url = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`
-  const response = await fetch(url)
-  if (!response.ok) throw new Error('Could not download the Telegram image.')
-  const bytes = Buffer.from(await response.arrayBuffer())
-  return `data:image/jpeg;base64,${bytes.toString('base64')}`
+function parseNameArg(raw) {
+  return raw?.trim().replace(/^["']|["']$/g, '').trim() || ''
 }
 
-async function loadData() {
-  const base = { token: process.env.GITHUB_TOKEN, repository: process.env.GITHUB_REPOSITORY, branch }
-  const [clubs, events] = await Promise.all([
-    getJsonFile({ ...base, path: 'clubs.json' }),
-    getJsonFile({ ...base, path: 'events.json' }),
-  ])
-  return { clubs, events }
+function pathFor(collection) {
+  return collection === 'clubs' ? 'clubs.json' : 'events.json'
 }
 
-async function handleSubmission(ctx) {
-  const text = ctx.message?.text || ctx.message?.caption || ctx.message?.forward_origin?.type || ''
-  const imageDataUrl = await getImageDataUrl(ctx)
-  if (!text && !imageDataUrl) {
-    await ctx.reply('Send text, forward a text post, or send a screenshot with a caption.')
-    return
-  }
-
-  await ctx.reply('Analysing your submission…')
-  const { clubs, events } = await loadData()
-  const proposal = await extractProposal({ text, imageDataUrl, clubs: clubs.data, events: events.data })
-  const invalidFields = isValidRecord(proposal)
-
-  if (invalidFields.length) {
-    await ctx.reply(
-      `${proposal.summary}\n\nI need: ${invalidFields.join(', ')}.\n` +
-      'Please send the missing details (a Google Maps link is ideal for coordinates), then resend the update.',
-    )
-    return
-  }
-
-  const id = randomId()
-  pending.set(id, proposal)
-  const keyboard = new InlineKeyboard()
-    .text('Approve and publish', `approve:${id}`)
-    .text('Reject', `reject:${id}`)
-  await ctx.reply(proposalMessage(proposal), { reply_markup: keyboard })
+function githubBase(path) {
+  return { token: process.env.GITHUB_TOKEN, repository: process.env.GITHUB_REPOSITORY, branch, path }
 }
 
-async function publishProposal(proposal) {
-  const path = proposal.collection === 'clubs' ? 'clubs.json' : 'events.json'
-  const base = { token: process.env.GITHUB_TOKEN, repository: process.env.GITHUB_REPOSITORY, branch, path }
-  const file = await getJsonFile(base)
-  const record = { ...proposal.record, last_updated: todayInDubai() }
-  let next
+async function findExisting(collection, name) {
+  const file = await getJsonFile(githubBase(pathFor(collection)))
+  const record = file.data.find((item) => item.name.toLowerCase() === name.toLowerCase())
+  return { file, record }
+}
 
-  if (proposal.action === 'update') {
-    const index = file.data.findIndex((item) => item.name === proposal.match_name)
-    if (index === -1) throw new Error(`Could not find “${proposal.match_name}” in ${path}. Resubmit it as a new proposal.`)
-    next = [...file.data]
-    next[index] = record
-  } else {
-    if (file.data.some((item) => item.name.toLowerCase() === record.name.toLowerCase())) {
-      throw new Error(`“${record.name}” already exists in ${path}. Resubmit this as an update.`)
-    }
-    next = [...file.data, record]
-  }
+function proposalMessage(proposal) {
+  const target = pathFor(proposal.collection)
+  const action = proposal.action === 'add' ? 'Add new' : `Update "${proposal.matchName}" in`
+  return [`${action} ${target}`, '', recordSummary(proposal.record)].join('\n')
+}
 
-  return updateJsonFile({
-    ...base,
-    sha: file.sha,
-    data: next,
-    message: `data: ${proposal.action} ${record.name}`,
-  })
+async function startTemplate(ctx, collection, action, matchName, existing) {
+  awaitingTemplate.set(String(ctx.chat.id), { collection, action, matchName })
+  const kind = collection === 'clubs' ? 'recurring club' : 'one-off event'
+  const verb = action === 'add' ? 'Fill in every line below' : 'Edit whatever changed, keep the rest as-is'
+  const template = buildTemplate(collection, existing || null)
+  await ctx.reply(
+    `${action === 'add' ? 'New' : 'Editing'} ${kind}${action === 'update' ? ` — "${matchName}"` : ''}\n` +
+    `${verb}, then send it back as one message.\n\n${template}`,
+  )
 }
 
 bot.use(async (ctx, next) => {
@@ -138,21 +72,102 @@ bot.use(async (ctx, next) => {
 })
 
 bot.command('start', (ctx) => ctx.reply(
-  'Velocity admin bot is ready. Send or forward a club/event update, or send a screenshot with a caption. I will prepare a preview for your approval.',
+  'Velocity admin bot is ready.\n\n' +
+  '/newclub — add a recurring club\n' +
+  '/editclub <exact name> — edit an existing club\n' +
+  '/newevent — add a one-off event\n' +
+  '/editevent <exact name> — edit an existing event\n' +
+  '/listclubs, /listevents — see what exists\n' +
+  '/cancel — cancel whatever you were filling in\n\n' +
+  "I'll send you a template to fill in and reply with. Nothing publishes until you press Approve.",
 ))
 
 bot.command('help', (ctx) => ctx.reply(
-  'Send a text update, forwarded announcement, or screenshot. Include the club/event, day/date, time, meetup location, link, and ideally a Google Maps link. I will not publish anything until you press Approve and publish.',
+  'Use /newclub or /newevent for a blank template, or /editclub <name> / /editevent <name> ' +
+  'to get one pre-filled with the existing record. Edit the values after each "key:", send the ' +
+  'whole message back, then press Approve and publish on the preview.',
 ))
 
-bot.on(['message:text', 'message:photo'], async (ctx) => {
-  try {
-    await handleSubmission(ctx)
-  } catch (error) {
-    console.error(error)
-    await ctx.reply(`I could not prepare that update: ${error.message}`)
-  }
+bot.command('cancel', async (ctx) => {
+  awaitingTemplate.delete(String(ctx.chat.id))
+  await ctx.reply('Cancelled. Nothing was changed.')
 })
+
+bot.command('newclub', (ctx) => startTemplate(ctx, 'clubs', 'add', null, null))
+bot.command('newevent', (ctx) => startTemplate(ctx, 'events', 'add', null, null))
+
+bot.command('editclub', async (ctx) => {
+  const name = parseNameArg(ctx.match)
+  if (!name) return ctx.reply('Usage: /editclub <exact club name> (no quotes needed) — see /listclubs for the exact names.')
+  const { record } = await findExisting('clubs', name)
+  if (!record) return ctx.reply(`No club found matching "${name}". Check /listclubs for exact names.`)
+  await startTemplate(ctx, 'clubs', 'update', record.name, record)
+})
+
+bot.command('editevent', async (ctx) => {
+  const name = parseNameArg(ctx.match)
+  if (!name) return ctx.reply('Usage: /editevent <exact event name> (no quotes needed) — see /listevents for the exact names.')
+  const { record } = await findExisting('events', name)
+  if (!record) return ctx.reply(`No event found matching "${name}". Check /listevents for exact names.`)
+  await startTemplate(ctx, 'events', 'update', record.name, record)
+})
+
+bot.command('listclubs', async (ctx) => {
+  const file = await getJsonFile(githubBase('clubs.json'))
+  if (!file.data.length) return ctx.reply('No clubs yet.')
+  await ctx.reply(file.data.map((c) => `• ${c.name} — ${c.day} ${c.time}`).join('\n'))
+})
+
+bot.command('listevents', async (ctx) => {
+  const file = await getJsonFile(githubBase('events.json'))
+  if (!file.data.length) return ctx.reply('No events yet.')
+  await ctx.reply(file.data.map((e) => `• ${e.name} — ${e.date} ${e.time}`).join('\n'))
+})
+
+bot.on('message:text', async (ctx) => {
+  const chatKey = String(ctx.chat.id)
+  const awaiting = awaitingTemplate.get(chatKey)
+  if (!awaiting) {
+    await ctx.reply('Use /newclub, /editclub <name>, /newevent, or /editevent <name> to get started.')
+    return
+  }
+
+  if (/maps_link:\s*https?:\/\//i.test(ctx.message.text)) await ctx.replyWithChatAction('typing')
+  const { record, errors } = await parseTemplate(awaiting.collection, ctx.message.text)
+  if (errors.length) {
+    await ctx.reply(`Fix these and send the full template again:\n\n${errors.map((e) => `• ${e}`).join('\n')}`)
+    return
+  }
+
+  awaitingTemplate.delete(chatKey)
+  const proposal = { collection: awaiting.collection, action: awaiting.action, matchName: awaiting.matchName, record }
+  const id = randomId()
+  pending.set(id, proposal)
+  const keyboard = new InlineKeyboard().text('Approve and publish', `approve:${id}`).text('Reject', `reject:${id}`)
+  await ctx.reply(proposalMessage(proposal), { reply_markup: keyboard })
+})
+
+async function publishProposal(proposal) {
+  const path = pathFor(proposal.collection)
+  const base = githubBase(path)
+  const file = await getJsonFile(base)
+  const record = { ...proposal.record, last_updated: todayInDubai() }
+  let next
+
+  if (proposal.action === 'update') {
+    const index = file.data.findIndex((item) => item.name.toLowerCase() === proposal.matchName.toLowerCase())
+    if (index === -1) throw new Error(`Could not find "${proposal.matchName}" in ${path} anymore. Resend it as /new${proposal.collection.slice(0, -1)}.`)
+    next = [...file.data]
+    next[index] = record
+  } else {
+    if (file.data.some((item) => item.name.toLowerCase() === record.name.toLowerCase())) {
+      throw new Error(`"${record.name}" already exists in ${path}. Use /edit${proposal.collection.slice(0, -1)} ${record.name} instead.`)
+    }
+    next = [...file.data, record]
+  }
+
+  return updateJsonFile({ ...base, sha: file.sha, data: next, message: `data: ${proposal.action} ${record.name}` })
+}
 
 bot.callbackQuery(/^reject:(.+)$/, async (ctx) => {
   pending.delete(ctx.match[1])
