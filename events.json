@@ -1,1 +1,17 @@
-[]
+[
+  {
+    "name": "ONO- One night only Track session",
+    "location_name": "Dubai American Academy",
+    "lat": 25.104510738680734,
+    "lng": 55.1811096116243,
+    "pace": "training",
+    "type": "training",
+    "surface": "track",
+    "freebies": true,
+    "date": "2000-08-14",
+    "time": "19:00",
+    "link": "https://www.instagram.com/onotrackdxb?igsh=bG13OHk3MmE3YXo0",
+    "notes": "",
+    "last_updated": "2026-08-14"
+  }
+]
