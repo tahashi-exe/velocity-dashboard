@@ -2,48 +2,73 @@
 
 ## What this is
 A map dashboard for discovering Dubai run clubs and one-off run events,
-tagline "VelocityAE — Find your next run." Landing page -> onboarding
-(local preferences) -> map with color-coded pins. Click a pin/list row for
-details. "Run Now" surfaces what's running soon, or the closest upcoming run
-if nothing qualifies within the next few hours. This file describes the
-current (v1) app as it exists today; the next version's product plan is in
-`PRD.md`, with schema/backend/implementation detail in `TECHNICAL.md`.
+tagline "VelocityAE — Stay on the move." Landing page -> onboarding
+(local preferences) -> map with color-coded pins. Tap a pin or list row for
+details. "Run Now" surfaces everything running soon, or the closest upcoming
+runs if nothing qualifies within the next few hours.
 
-Currently a static site on GitHub Pages — no backend yet. Accounts and RSVPs
-(`PRD.md` §4.8, §4.8b) are planned but blocked on the Supabase migration
-(`TECHNICAL.md` §5–6) and are NOT built yet.
+This file describes the app **as it exists today**. `PRD.md` holds the v2
+product plan and `TECHNICAL.md` the schema/backend design — parts of both are
+now built (see Current status), but everything backend-shaped in them is not.
+
+Still a static site on GitHub Pages, no backend. Accounts and synced RSVPs
+(`PRD.md` §4.8, §4.8b) remain blocked on the Supabase migration
+(`TECHNICAL.md` §5–6). RSVP and preferences exist today as **localStorage
+mocks only** — nothing syncs, nothing is shared between devices.
 
 ## Tech stack
 - **Hosting:** GitHub Pages (static, deploys from `main` branch)
-- **Map:** Leaflet.js + OpenStreetMap tiles (free, no API key)
+- **Map:** MapLibre GL JS v4 + OpenFreeMap vector tiles (free, no API key).
+  Note the `@4` CDN tag resolves to 4.7.1, which has **no `setProjection`** —
+  that's a v5+ API. `landing-map.js` attempts it in a try/catch and degrades
+  to a flat zoom (see its header comment before "fixing" this).
 - **Data:** `clubs.json` (recurring) + `events.json` (one-off) — flat files,
-  hand-edited or via the planned Telegram bot (§ below)
-- **Frontend:** Plain HTML/CSS/JS, no framework, no build step
-- **Fonts:** Helvetica Neue / Helvetica / Arial (system font, bold weight)
+  edited via the Telegram bot (§ below) or by hand
+- **Frontend:** Plain HTML/CSS/JS, no framework, no build step. Scripts are
+  plain `<script>` tags loaded in dependency order by `index.html`.
+- **Fonts:** Bricolage Grotesque (display — wordmark, hero, panel titles,
+  calendar date numerals) + Plus Jakarta Sans (body/UI), via Google Fonts.
+  Referenced through `--font-display` / `--font-body` in `:root`.
 - **Theme:** Light background, purple (`#6D28D9`) + lime green (`#A3E635`)
+- **PWA:** installable to the iOS home screen — `manifest.webmanifest` plus a
+  deliberately minimal `sw.js` (installability only; **no offline caching**)
 
 ## File structure
 ```
 /
-├── index.html      # Landing, onboarding modal, topbar, map, panels, sheet
-├── style.css       # Theme + all component styles
-├── script.js       # All app logic (see breakdown below)
-├── clubs.json      # Recurring run clubs
-├── events.json     # One-off events (currently empty — add entries as needed)
-├── PRD.md          # v2 product plan — not built yet (see TECHNICAL.md for schema/backend)
-├── TECHNICAL.md    # v2 schema/backend/implementation detail — not built yet
-├── README.md       # Public-facing project description
-└── CLAUDE.md       # This file
+├── index.html          # Shell: landing, onboarding + install modals, run panel
+├── style.css           # Theme + all component styles
+├── data.js             # Velocity: data layer — load, normalize, status, prefs, RSVP, .ics
+├── shared-ui.js        # SharedUI: landing, onboarding, install tutorial, run detail panel
+├── variant-a.js        # VariantA: topbar, map, bottom sheet, Run Now, Explore — mounts the app
+├── calendar.js         # Calendar: day-band calendar rendering
+├── map-helpers.js      # MapHelper: MapLibre setup + marker creation
+├── landing-map.js      # LandingMap: decorative animated map behind the hero
+├── sw.js               # Service worker — installability only, caches nothing
+├── manifest.webmanifest, icon*.png/svg
+├── clubs.json          # Recurring run clubs
+├── events.json         # One-off events
+├── script.js           # ⚠️ DEAD — the old v1 Leaflet app. Not referenced by
+│                       #    index.html. Kept only as a reference copy.
+├── PRD.md / TECHNICAL.md   # v2 product plan + schema/backend design
+├── README.md           # Public-facing project description
+└── CLAUDE.md           # This file
 ```
 
+`script.js` is not loaded by anything. Don't edit it expecting a change, and
+don't take its logic as current — it still reads fields (`pace`) the app no
+longer uses.
+
 ## Data schema
+
+The JSON files keep their original v1 field names on disk; `data.js`'s
+`toRun()` normalizes them into the internal `run` shape at load time.
 
 `clubs.json` (recurring, weekly):
 ```json
 {
   "name": "string", "location_name": "string", "lat": 0.0, "lng": 0.0,
-  "pace": "easy / social | tempo | training",
-  "type": "social | training | track",
+  "type": "social | tempo | training | long_run | pyramid",
   "surface": "track | beach | road",
   "freebies": true,
   "day": "monday..sunday (lowercase)", "time": "HH:MM (24h)",
@@ -51,100 +76,140 @@ Currently a static site on GitHub Pages — no backend yet. Accounts and RSVPs
 }
 ```
 
-`events.json` (one-off, single date):
-```json
-{
-  "name": "string", "location_name": "string", "lat": 0.0, "lng": 0.0,
-  "pace": "easy / social | tempo | training", "type": "social | training",
-  "surface": "track | beach | road", "freebies": false,
-  "date": "YYYY-MM-DD", "time": "HH:MM (24h)",
-  "link": "url", "notes": "string", "last_updated": "YYYY-MM-DD"
-}
-```
+`events.json` (one-off, single date): same, but `"date": "YYYY-MM-DD"`
+instead of `"day"`.
 
-⚠️ Hand-edits to either file must stay valid JSON — validate before
-committing (one syntax error breaks parsing for the whole file).
+Notes:
+- **`pace` is retired.** Older records still carry it and edits preserve it,
+  but nothing reads it and the bot no longer asks for it.
+- **`type` legacy values:** `track` (and anything unrecognised) maps to
+  `training` via `mapOldTypeToKey()` in `data.js`. Known keys pass through.
+  `LFG` in `clubs.json` is still `"track"` and relies on this.
+- `surface` lives on the internal run as `details.surface`.
 
-## Pin color logic (script.js: `getColor`)
-Priority order (first match wins): **one-off (black) → freebies (green) →
-training (red) → repeated/regular (white)**.
+⚠️ Hand-edits must stay valid JSON — one syntax error breaks the whole file.
+
+## Pin visuals (`data.js`: `pinVisual`)
+**Two independent layers**, not a priority chain:
+- **Base color** — `one_off` → black, else training-equivalent type → red,
+  else → white
+- **Freebies ring** — a lime ring drawn around *any* pin when `freebies` is
+  true, regardless of base color
+
+This split exists deliberately: the old single-color priority chain meant a
+one-off event that also had freebies rendered black and lost the freebies
+signal entirely. Keep the two layers independent.
+
+Only `training` carries `trainingEquivalent: true` in `CATEGORIES.running.types`,
+so `tempo` / `long_run` / `pyramid` currently render as white pins.
 
 ## Preferences & filtering
-- Onboarding (`OB_STEPS` in script.js) collects name, age, pace, session
-  type, surface preference (track/beach), freebies interest.
-- Stored in `localStorage` under `velocity_prefs` — **on-device only, no
-  backend, no account.** This is separate from the future sign-up flow
-  (PRD.md §4.3), which will need real accounts server-side.
-- Profile icon (top right) reopens onboarding pre-filled for editing.
-- Filters panel (right side, `#filters-panel`) toggles "View all" vs "Match
-  my prefs" (`matchesPrefs()` — currently matches on session type + surface
-  only, not full preference set — simple AND logic, easy to extend).
-- Wellness category filters are shown locked; clicking shows a toast
-  ("Featuring in the next release") per PRD.md §4.13.
+- Onboarding (`OB_STEPS` in `shared-ui.js`) collects name, run type, surface,
+  and freebies interest. Stored in `localStorage` under `velocity_prefs` —
+  **on-device only, no account.**
+- Profile (in the topbar's ⋯ menu) reopens onboarding pre-filled.
+- **"Match my prefs"** chip in the bottom sheet toggles filtering by those
+  answers (`matchesPrefs()` in `data.js`): type must match exactly; surface
+  only constrains when the run has one set; freebies only applies if the user
+  opted in. Tapping it with no saved prefs opens onboarding first and only
+  activates if the user actually finishes.
+- **Type filter chips** (All / Social / Tempo / Training / Long run / Pyramid
+  session) filter the sheet and the map markers together.
+- **Scope toggle** in the topbar switches This Week / This Month.
 
-## Status logic (script.js: `getItemStatus`)
-Unified for both recurring and one-off items. Returns `phase`: `'soon'`
-(within the -60/+180 min window), `'upcoming'` (next occurrence found but
-outside that window), or `'expired'` (one-off event already passed).
+## Status logic (`data.js`: `statusOf`)
+Unified for recurring and one-off. Returns `phase`: `'soon'` (within the
+-60/+180 min window), `'upcoming'`, or `'expired'` (one-off already passed).
 
-## Run Now (script.js: `computeRunNow` / `renderRunNowPanel`)
-Per PRD.md §4.8 — always returns a result if any non-expired item exists:
-prefers items in `'soon'` phase; if none, falls back to the closest
-`'upcoming'` items instead of returning empty. **Default sort is always by
-time** (soonest first) — this was previously bugged to sort by distance
-whenever location was granted, burying time-critical runs. Location is now
-a separate, explicit toggle ("Nearest first") shown only when location
-permission is granted, so distance sorting is opt-in, not automatic.
+Recurring runs are always *displayed* as a standing weekly slot ("Every
+Wednesday, 19:30") per PRD.md §4.6 — but `statusOf` still computes a real next
+occurrence internally for sorting, Run Now, and `.ics` export. Don't remove
+that math when touching the display.
 
-## List / Map sheet
-`#list-sheet` — a bottom sheet toggled by tapping the handle (basic
-pointer-drag also supported). Lists all visible items sorted by soonest,
-with a "runs this week" count banner at the top (items within 7 days).
+Expired one-offs are filtered out of every view (`withinScope`).
+
+## Run Now (`variant-a.js`: `handleRunNow` / `renderRunNowPanel`)
+Opens a panel listing **every** non-expired option — not just the top pick.
+Sorted by **closest time** by default; a "Nearest location" toggle appears
+only once geolocation resolves, so distance sorting is opt-in. Falls back to
+the closest upcoming runs when nothing is in the `'soon'` window.
+
+## Other UI
+- **Bottom sheet** (`#list-sheet`) — collapsed to just its drag handle;
+  tap or drag the handle to expand. Holds "All runs" + filters + the list.
+- **Calendar** (⋯ → Calendar, `calendar.js`) — vertically stacked day bands in
+  a fixed per-weekday pastel palette, big date numerals, runs as dark pill
+  chips. Recurring runs appear on every matching weekday in range. Days with
+  no runs collapse to a quiet single line. Rendered "compact" in the panel.
+- **Explore** (⋯ → Explore) — locked "coming soon" chips for Yoga, Pilates,
+  Badminton, Padel, Cycling, teasing the multi-category future in
+  `TECHNICAL.md` §3. Nothing behind them yet.
+- **Install tutorial** (`shared-ui.js`) — platform-aware, shown after
+  onboarding. iOS gets an illustrated Share → Add to Home Screen walkthrough
+  (Safari has no install API); Android gets a real `beforeinstallprompt`
+  button; desktop is skipped. Shows every session until actually installed.
+- **RSVP** — Going / Interested / Not interested / Not going, per run, stored
+  in `localStorage` (`velocity_rsvp_v2`). Not synced, deliberately.
+- **Add to calendar** — per-event `.ics` download (`data.js`: `downloadICS`).
+
+Only one UI variant exists (`variant-a.js`). Two others and a switcher were
+prototyped and deliberately deleted once this one was chosen.
 
 ## How data gets updated
-Manual: edit `clubs.json`/`events.json` directly in GitHub's web editor,
-commit — GitHub Pages rebuilds in about a minute.
+Hand-edit `clubs.json` / `events.json` in GitHub's web editor and commit —
+Pages rebuilds in about a minute.
 
 **Telegram bot** (`/telegram-bot`): a private always-on Node process (grammy),
-separate from this static site, deliberately with no AI/API dependency. It
-sends the owner a fill-in-the-blanks template for a club or event, the owner
-edits values in Telegram and sends it back, the bot deterministically parses
-and validates it (`telegram-bot/src/template.js`), shows a preview, and only
-commits via GitHub's Contents API (`telegram-bot/src/github.js`) after an
-explicit Approve tap. Deployed on Railway (root directory `telegram-bot`) —
-see `telegram-bot/README.md` for setup and daily use.
+separate from this static site, deliberately with **no AI/API dependency**.
+It asks one question at a time with tappable buttons for fixed-choice fields,
+accepts a native Telegram location pin / Maps link / typed coordinates for
+the meeting point, shows a preview, and only commits via GitHub's Contents
+API (`telegram-bot/src/github.js`) after an explicit **Approve and publish**
+tap. `/editclub <name>` opens a field menu to change one field rather than
+re-walking every question. In-progress answers persist to disk
+(`telegram-bot/src/drafts.js`) so a restart resumes — though Railway's
+filesystem is ephemeral across *redeploys*. Deployed on Railway (root
+directory `telegram-bot`) — see `telegram-bot/README.md`.
+
+Keep the bot deterministic. The no-AI constraint is a deliberate design
+decision, not an oversight.
 
 ## Conventions
 - Keep dependency-light; no framework unless the project clearly outgrows it.
-- No API keys required for the current frontend (Leaflet + OSM are
-  free/keyless). The Telegram bot is a separate piece with its own secrets
-  — never put those in this repo's frontend code.
+  The bot's step machine is hand-rolled for this reason rather than pulling in
+  `@grammyjs/conversations`.
+- No API keys in the frontend (MapLibre + OpenFreeMap are free/keyless). The
+  Telegram bot has its own secrets in `telegram-bot/.env` — **never** read,
+  print, or commit that file, and never put those values in frontend code.
+- Respect `prefers-reduced-motion` — there's a global override at the end of
+  `style.css`.
 - See `PRD.md` §4.8/§4.8b and `TECHNICAL.md` §5–6 before adding accounts or
-  RSVPs — those need the planned Supabase backend and must not store
-  personal data (phone numbers) in this public repo.
+  RSVPs — those need the planned Supabase backend and must not store personal
+  data (phone numbers) in this public repo.
 
 ## Current status
-- [x] Reskin: lime/purple theme, Helvetica Bold, landing page, left-side
-      panels, pin name labels
-- [x] Onboarding (local prefs), profile icon, filters panel (locked
-      wellness section), list/map toggle sheet, "runs this week" banner,
-      Run Now fallback logic, one-off events data model, color-coded pins
-- [x] v2 PRD + technical doc drafted (`PRD.md`, `TECHNICAL.md`) — categories,
-      accounts/RSVP, calendar, MapLibre migration, PWA; not built yet
-- [ ] Supabase backend, accounts/sign-in, RSVPs
-- [ ] PWA manifest for iOS install
-- [x] Telegram bot — template-based (no AI), pending Railway deployment
-      and first real-world use (see /telegram-bot)
+- [x] MapLibre migration, lime/purple theme, Bricolage/Jakarta type pairing
+- [x] Onboarding (local prefs) + "Match my prefs" filter, type filter chips,
+      This Week/This Month scope toggle
+- [x] Two-layer pin visuals (kind/type color + independent freebies ring)
+- [x] Run Now panel — all options, time or distance sorted
+- [x] Calendar day-band view, Explore (coming soon) panel
+- [x] RSVP + per-event `.ics` export (local only)
+- [x] PWA manifest, service worker, platform-aware install tutorial
+- [x] Telegram bot — guided question flow (no AI)
+- [ ] Supabase backend, accounts/sign-in, synced RSVPs
 - [ ] Freebies page
 - [ ] Glowing GPX routes (pending GPX files from Taha)
 
 ## Known simplifications (flagged for later refinement)
-- `matchesPrefs()` only checks session type + surface, not pace/age/freebies
-  interest — fine for a first pass, worth expanding once real usage shows
-  what matters.
-- `freebies`/`surface` values on the 4 existing clubs are Claude's best
+- RSVP and prefs are `localStorage` only — clearing site data loses them, and
+  nothing is shared between devices or viewers.
+- `tempo` / `long_run` / `pyramid` runs render as white pins, since only
+  `training` is flagged `trainingEquivalent`. Fine for now; revisit if those
+  types get common enough to need their own color.
+- `freebies` / `surface` values on the 4 existing clubs are Claude's best
   guesses, not confirmed by Taha — worth double-checking.
-- List sheet drag is click/tap + simple pointer delta, not full physics —
-  works but isn't buttery; fine for a prototype.
-- Onboarding doesn't yet re-skip the landing page on repeat visits (PRD.md
-  scope, not yet built).
+- List sheet drag is click/tap + simple pointer delta, not full physics.
+- The landing hero's "globe" is a flat zoom, not a real 3D globe — see the
+  MapLibre version note in Tech stack.
+- Onboarding doesn't re-skip the landing page on repeat visits.
