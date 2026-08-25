@@ -21,21 +21,32 @@
      "prototype" skill — three structural UI variants switchable below,
      nothing here is meant to merge to main as-is. -->
 
-<!-- Landing page -->
+<!-- Landing page: live globe-to-map background, decorative + non-interactive -->
 <div id="landing-page">
-  <svg class="landing-pin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 22s8-7.58 8-13A8 8 0 0 0 4 9c0 5.42 8 13 8 13z" fill="#A3E635"/>
-    <circle cx="12" cy="9" r="3" fill="#4C1D95"/>
-  </svg>
-  <h1 class="landing-title">VelocityAE</h1>
-  <p class="landing-tagline">Find your next run</p>
-  <button id="lets-run-btn" class="landing-cta">Let's Run?</button>
+  <div id="landing-map"></div>
+  <div class="landing-scrim"></div>
+  <div class="landing-content">
+    <svg class="landing-pin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 22s8-7.58 8-13A8 8 0 0 0 4 9c0 5.42 8 13 8 13z" fill="#A3E635"/>
+      <circle cx="12" cy="9" r="3" fill="#4C1D95"/>
+    </svg>
+    <h1 class="landing-title">VelocityAE</h1>
+    <p class="landing-tagline">Find your next run</p>
+    <button id="lets-run-btn" class="landing-cta">Let's Run?</button>
+  </div>
 </div>
 
 <!-- Onboarding modal -->
 <div id="onboarding-modal" class="modal-overlay" aria-hidden="true">
   <div class="modal-card">
     <div id="onboarding-steps"></div>
+  </div>
+</div>
+
+<!-- Install-to-homescreen tutorial: platform-aware, shown after onboarding -->
+<div id="install-modal" class="modal-overlay" aria-hidden="true">
+  <div class="modal-card">
+    <div id="install-steps"></div>
   </div>
 </div>
 
@@ -57,6 +68,7 @@
 <script src="data.js"></script>
 <script src="calendar.js"></script>
 <script src="map-helpers.js"></script>
+<script src="landing-map.js"></script>
 <script src="shared-ui.js"></script>
 <script src="variant-a.js"></script>
 <script src="variant-b.js"></script>

@@ -339,14 +339,37 @@ button:active {
   position: fixed;
   inset: 0;
   z-index: 5000;
-  background: linear-gradient(160deg, var(--purple) 0%, var(--purple-dark) 55%, #2E1065 100%);
+  background: var(--purple-dark); /* solid fallback so there's no flash before the map paints */
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 24px;
   transition: opacity 0.4s ease, visibility 0.4s ease;
+  overflow: hidden;
+}
+
+#landing-map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.landing-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(160deg, rgba(109,40,217,0.75) 0%, rgba(76,29,149,0.82) 55%, rgba(46,16,101,0.9) 100%);
+}
+
+.landing-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 #landing-page.hidden {
@@ -525,7 +548,7 @@ button:active {
   position: fixed;
   inset: 0;
   background: rgba(31, 27, 46, 0.55);
-  z-index: 4000;
+  z-index: 5500; /* above #landing-page (5000) — it fades over 0.4s, not an instant unmount */
   display: none;
   align-items: center;
   justify-content: center;
@@ -617,6 +640,47 @@ button:active {
   font-weight: 400;
   color: var(--text-muted);
   margin-bottom: 6px;
+}
+
+/* Install-to-homescreen tutorial */
+.install-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--purple-dark);
+  margin: 0 0 4px;
+}
+.install-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin: 0 0 20px;
+}
+.install-step-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.install-step-row:last-of-type { border-bottom: none; }
+.install-step-icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--purple-tint);
+  color: var(--purple-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.install-step-text { font-size: 14px; font-weight: 700; color: var(--text); }
+.install-step-num { color: var(--text-muted); font-weight: 400; margin-right: 4px; }
+.install-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
 }
 
 /* List / map bottom sheet */

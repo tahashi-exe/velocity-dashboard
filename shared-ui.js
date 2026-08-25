@@ -10,6 +10,17 @@ const SharedUI = (() => {
   const landingPage = document.getElementById('landing-page');
   const onboardingModal = document.getElementById('onboarding-modal');
   const onboardingSteps = document.getElementById('onboarding-steps');
+  const installModal = document.getElementById('install-modal');
+  const installSteps = document.getElementById('install-steps');
+
+  // Captured as early as possible (script-parse time, before any user
+  // interaction) — Chrome only fires this once per pageload.
+  let deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+  });
+  window.addEventListener('appinstalled', () => { deferredInstallPrompt = null; });
 
   const RSVP_OPTIONS = [
     { key: 'going', label: 'Going' },
@@ -87,6 +98,89 @@ const SharedUI = (() => {
     openPanel(runPanel);
   }
 
+  /* ---------- install-to-homescreen tutorial ----------
+     Platform-aware: iOS has no programmatic install, so it's an
+     illustrated manual walkthrough; Android/Chrome gets the real
+     beforeinstallprompt flow; desktop skips entirely. Shows every
+     session until display-mode reports installed (no dismiss-forever
+     flag — see PRD.md §4.7 discussion pattern: this mirrors that same
+     "don't persist a skip" call). */
+
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+  function isAndroid() { return /Android/.test(navigator.userAgent); }
+  function isStandaloneInstalled() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+
+  const SHARE_ICON_SVG = `
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v12M7 8l5-5 5 5"/>
+      <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>
+    </svg>`;
+  const PLUS_ICON_SVG = `
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>
+    </svg>`;
+  const DOWNLOAD_ICON_SVG = `
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v12M7 11l5 5 5-5"/><path d="M5 20h14"/>
+    </svg>`;
+
+  function closeInstallModal() { installModal.classList.remove('open'); }
+
+  function maybeShowInstallTutorial(onDone) {
+    if (isStandaloneInstalled()) { onDone(); return; }
+    if (isIOS()) { openInstallTutorial('ios', onDone); return; }
+    if (isAndroid()) { openInstallTutorial('android', onDone); return; }
+    onDone(); // desktop — skip entirely
+  }
+
+  function openInstallTutorial(platform, onDone) {
+    const finish = () => { closeInstallModal(); onDone(); };
+
+    if (platform === 'ios') {
+      installSteps.innerHTML = `
+        <div class="install-title">Install VelocityAE</div>
+        <div class="install-sub">Add it to your home screen for one-tap access, like a real app.</div>
+        <div class="install-step-row"><div class="install-step-icon">${SHARE_ICON_SVG}</div><div class="install-step-text"><span class="install-step-num">1.</span>Tap the Share icon in Safari's toolbar</div></div>
+        <div class="install-step-row"><div class="install-step-icon">${PLUS_ICON_SVG}</div><div class="install-step-text"><span class="install-step-num">2.</span>Scroll down and tap "Add to Home Screen"</div></div>
+        <div class="install-step-row"><div class="install-step-icon">${DOWNLOAD_ICON_SVG}</div><div class="install-step-text"><span class="install-step-num">3.</span>Tap "Add" to confirm</div></div>
+        <div class="install-nav"><button class="ob-btn secondary" id="install-close">Got it</button></div>
+      `;
+      document.getElementById('install-close').addEventListener('click', finish);
+    } else {
+      const canPrompt = !!deferredInstallPrompt;
+      installSteps.innerHTML = `
+        <div class="install-title">Install VelocityAE</div>
+        <div class="install-sub">${canPrompt
+          ? 'Add it to your home screen for one-tap access, like a real app.'
+          : 'Open the ⋮ menu in Chrome and tap "Install app" to add it to your home screen.'}</div>
+        <div class="install-nav">
+          <button class="ob-btn secondary" id="install-skip">Not now</button>
+          ${canPrompt ? '<button class="ob-btn primary" id="install-go">Install</button>' : '<button class="ob-btn primary" id="install-close">Got it</button>'}
+        </div>
+      `;
+      document.getElementById('install-skip').addEventListener('click', finish);
+      const goBtn = document.getElementById('install-go');
+      if (goBtn) {
+        goBtn.addEventListener('click', async () => {
+          if (!deferredInstallPrompt) { finish(); return; }
+          deferredInstallPrompt.prompt();
+          await deferredInstallPrompt.userChoice;
+          deferredInstallPrompt = null; // one-shot
+          finish();
+        });
+      }
+      const closeBtn = document.getElementById('install-close');
+      if (closeBtn) closeBtn.addEventListener('click', finish);
+    }
+
+    installModal.classList.add('open');
+  }
+
   /* ---------- landing + onboarding (unchanged shape from v1) ---------- */
 
   const OB_STEPS = [
@@ -104,11 +198,16 @@ const SharedUI = (() => {
     ]},
   ];
 
-  let obIndex = 0, obData = {};
+  let obIndex = 0, obData = {}, obOnComplete = null;
 
-  function openOnboarding(prefill) {
+  // onComplete fires once, whether onboarding is Finished or Skipped — but
+  // NOT when reopened from the profile-edit button (which calls this with
+  // no second argument), so the install tutorial only fires on a genuine
+  // landing→app transition, never on a prefs re-edit.
+  function openOnboarding(prefill, onComplete) {
     obIndex = 0;
     obData = prefill ? { ...prefill } : {};
+    obOnComplete = onComplete || null;
     renderObStep();
     onboardingModal.classList.add('open');
   }
@@ -146,7 +245,11 @@ const SharedUI = (() => {
       opt.addEventListener('click', () => { obData[opt.dataset.key] = opt.dataset.value; renderObStep(); });
     });
     document.getElementById('ob-back').addEventListener('click', () => {
-      if (obIndex === 0) { closeOnboarding(); return; }
+      if (obIndex === 0) {
+        closeOnboarding();
+        if (obOnComplete) { const cb = obOnComplete; obOnComplete = null; cb(); }
+        return;
+      }
       obIndex--; renderObStep();
     });
     document.getElementById('ob-next').addEventListener('click', () => {
@@ -154,14 +257,19 @@ const SharedUI = (() => {
       Velocity.savePrefs(obData);
       closeOnboarding();
       document.dispatchEvent(new CustomEvent('velocity:prefs-changed'));
+      if (obOnComplete) { const cb = obOnComplete; obOnComplete = null; cb(); }
     });
   }
 
   function initLanding(onEnter) {
     document.getElementById('lets-run-btn').addEventListener('click', () => {
       landingPage.classList.add('hidden');
-      if (!Velocity.getPrefs()) openOnboarding({});
-      onEnter();
+      LandingMap.destroy();
+      if (!Velocity.getPrefs()) {
+        openOnboarding({}, () => maybeShowInstallTutorial(onEnter));
+      } else {
+        maybeShowInstallTutorial(onEnter);
+      }
     });
   }
 

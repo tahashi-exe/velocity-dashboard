@@ -46,5 +46,5 @@ const MapHelper = (() => {
     markers.length = 0;
   }
 
-  return { createMap, addMarkers, clearMarkers, DUBAI_CENTER };
+  return { createMap, addMarkers, clearMarkers, DUBAI_CENTER, STYLE_URL };
 })();
