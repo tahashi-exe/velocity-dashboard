@@ -68,26 +68,34 @@ button:active {
   font-size: 18px;
 }
 
+/* Glare as a separate overlay, not a background-clip:text trick — the
+   latter can render fully invisible when an ancestor also has
+   backdrop-filter (the topbar's blur), a known Chromium/WebKit compositing
+   interaction. This way the wordmark's own color is always solid and
+   guaranteed visible; only a light sweep is layered on top of it. */
 .brand-name {
   position: relative;
+  display: inline-block;
+  overflow: hidden;
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  background-image: linear-gradient(100deg,
-    var(--purple-dark) 0%, var(--purple-dark) 42%,
-    #C9A8FF 50%,
-    var(--purple-dark) 58%, var(--purple-dark) 100%);
-  background-size: 260% 100%;
-  background-position: 100% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: brand-glare 5s ease-in-out infinite;
+  color: var(--purple-dark);
 }
-@keyframes brand-glare {
-  0% { background-position: 160% 0; }
-  35% { background-position: -60% 0; }
-  100% { background-position: -60% 0; }
+.brand-name::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 35%, rgba(255,255,255,0.9) 50%, transparent 65%);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  transform: translateX(-130%);
+  animation: brand-glare-sweep 5s ease-in-out infinite;
+}
+@keyframes brand-glare-sweep {
+  0% { transform: translateX(-130%); }
+  35% { transform: translateX(130%); }
+  100% { transform: translateX(130%); }
 }
 
 .run-now-btn {
