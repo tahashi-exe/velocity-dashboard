@@ -50,3 +50,10 @@ See [`telegram-bot/README.md`](telegram-bot/README.md) for setup and daily use.
 
 See `CLAUDE.md` for the technical breakdown (file structure, data schema, and
 how the Run Now logic works) if you're picking this up in an editor.
+
+## Roadmap
+
+The next version's plan — multiple activity categories, accounts and RSVPs,
+a calendar view, a MapLibre-based map, and PWA install support — is written
+up in [`PRD.md`](PRD.md), with the accompanying schema and backend design in
+[`TECHNICAL.md`](TECHNICAL.md). Nothing in either doc is built yet.

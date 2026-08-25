@@ -5,12 +5,13 @@ A map dashboard for discovering Dubai run clubs and one-off run events,
 tagline "VelocityAE — Find your next run." Landing page -> onboarding
 (local preferences) -> map with color-coded pins. Click a pin/list row for
 details. "Run Now" surfaces what's running soon, or the closest upcoming run
-if nothing qualifies within the next few hours. Full scope and roadmap is
-in `PRD.md`.
+if nothing qualifies within the next few hours. This file describes the
+current (v1) app as it exists today; the next version's product plan is in
+`PRD.md`, with schema/backend/implementation detail in `TECHNICAL.md`.
 
-Currently a static site on GitHub Pages — no backend yet. Sign-up, RSVPs,
-and reviews (PRD.md §4.3, §4.10, §4.11) are blocked on the planned Supabase
-migration (PRD.md §6) and are NOT built yet.
+Currently a static site on GitHub Pages — no backend yet. Accounts and RSVPs
+(`PRD.md` §4.8, §4.8b) are planned but blocked on the Supabase migration
+(`TECHNICAL.md` §5–6) and are NOT built yet.
 
 ## Tech stack
 - **Hosting:** GitHub Pages (static, deploys from `main` branch)
@@ -29,7 +30,8 @@ migration (PRD.md §6) and are NOT built yet.
 ├── script.js       # All app logic (see breakdown below)
 ├── clubs.json      # Recurring run clubs
 ├── events.json     # One-off events (currently empty — add entries as needed)
-├── PRD.md          # Full product spec — current + planned features
+├── PRD.md          # v2 product plan — not built yet (see TECHNICAL.md for schema/backend)
+├── TECHNICAL.md    # v2 schema/backend/implementation detail — not built yet
 ├── README.md       # Public-facing project description
 └── CLAUDE.md       # This file
 ```
@@ -117,9 +119,9 @@ see `telegram-bot/README.md` for setup and daily use.
 - No API keys required for the current frontend (Leaflet + OSM are
   free/keyless). The Telegram bot is a separate piece with its own secrets
   — never put those in this repo's frontend code.
-- See `PRD.md` §6 before adding sign-up/RSVP/reviews — those need a real
-  backend and must not store personal data (phone numbers) in this public
-  repo.
+- See `PRD.md` §4.8/§4.8b and `TECHNICAL.md` §5–6 before adding accounts or
+  RSVPs — those need the planned Supabase backend and must not store
+  personal data (phone numbers) in this public repo.
 
 ## Current status
 - [x] Reskin: lime/purple theme, Helvetica Bold, landing page, left-side
@@ -127,7 +129,9 @@ see `telegram-bot/README.md` for setup and daily use.
 - [x] Onboarding (local prefs), profile icon, filters panel (locked
       wellness section), list/map toggle sheet, "runs this week" banner,
       Run Now fallback logic, one-off events data model, color-coded pins
-- [ ] Supabase backend, sign-up/auth, RSVPs, reviews
+- [x] v2 PRD + technical doc drafted (`PRD.md`, `TECHNICAL.md`) — categories,
+      accounts/RSVP, calendar, MapLibre migration, PWA; not built yet
+- [ ] Supabase backend, accounts/sign-in, RSVPs
 - [ ] PWA manifest for iOS install
 - [x] Telegram bot — template-based (no AI), pending Railway deployment
       and first real-world use (see /telegram-bot)
