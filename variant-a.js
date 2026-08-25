@@ -1,10 +1,14 @@
 /* ---------- Variant A: Map Sheet ----------
-   Closest to v1's shape: full-bleed map is the primary affordance, a
-   draggable bottom sheet lists everything, Run Now and the calendar are
-   both one tap away but secondary. */
+   Full-bleed map is the primary affordance, a draggable bottom sheet lists
+   everything, Run Now and the calendar are both one tap away but secondary.
+   The only variant left in the prototype — B and C were dropped along with
+   the switcher once this one was picked to keep iterating on. */
+
+const EXPLORE_LOCKED = ['Yoga', 'Pilates', 'Badminton', 'Padel', 'Cycling'];
 
 const VariantA = (() => {
   let runs = [], map, markers = [], scope = 'week', typeFilter = 'all';
+  let runNowPool = [], runNowUsingSoon = false, runNowUserLoc = null, runNowSortMode = 'time';
 
   function mount() {
     const root = document.getElementById('app-root');
@@ -24,6 +28,7 @@ const VariantA = (() => {
             <button type="button" class="icon-btn" id="more-btn" aria-label="More" aria-expanded="false">&#8942;</button>
             <div class="more-menu" id="more-menu">
               <button type="button" class="more-menu-item" id="cal-btn">&#128197; Calendar</button>
+              <button type="button" class="more-menu-item" id="explore-btn">&#129517; Explore</button>
               <button type="button" class="more-menu-item" id="profile-btn">&#128100; Profile</button>
             </div>
           </div>
@@ -43,6 +48,18 @@ const VariantA = (() => {
         <button class="panel-close" id="cal-panel-close">&times;</button>
         <div class="run-title" style="margin-top:6px;">Calendar</div>
         <div id="cal-panel-body"></div>
+      </aside>
+
+      <aside id="runnow-panel" class="panel panel-left" aria-hidden="true">
+        <button class="panel-close" id="runnow-panel-close">&times;</button>
+        <div id="runnow-content"></div>
+      </aside>
+
+      <aside id="explore-panel" class="panel panel-right" aria-hidden="true">
+        <button class="panel-close" id="explore-panel-close">&times;</button>
+        <div class="run-title" style="margin-top:6px;">Explore</div>
+        <div class="filter-section-title">More activities, coming soon</div>
+        ${EXPLORE_LOCKED.map(a => `<div class="locked-chip" data-label="${a}">${a} <span class="lock-icon">&#128274;</span></div>`).join('')}
       </aside>
     `;
 
@@ -97,7 +114,18 @@ const VariantA = (() => {
       moreMenu.classList.remove('open');
       SharedUI.openOnboarding(Velocity.getPrefs() || {});
     });
+
+    document.getElementById('explore-btn').addEventListener('click', () => {
+      moreMenu.classList.remove('open');
+      SharedUI.openPanel(document.getElementById('explore-panel'));
+    });
+    document.getElementById('explore-panel-close').addEventListener('click', SharedUI.closeAllPanels);
+    document.querySelectorAll('#explore-panel .locked-chip').forEach(chip => {
+      chip.addEventListener('click', () => SharedUI.toast(`${chip.dataset.label} — coming in a future update`));
+    });
+
     document.getElementById('run-now-btn').addEventListener('click', handleRunNow);
+    document.getElementById('runnow-panel-close').addEventListener('click', SharedUI.closeAllPanels);
     document.addEventListener('velocity:prefs-changed', render);
 
     Velocity.loadRuns().then(data => { runs = data; render(); });
@@ -139,16 +167,83 @@ const VariantA = (() => {
     });
   }
 
+  // Run Now: shows every non-expired option (not just the top pick), sorted
+  // by closest time by default, with a "Nearest location" toggle once
+  // geolocation resolves — matches the original v1 panel design.
   function handleRunNow() {
+    document.getElementById('runnow-content').innerHTML = `<div class="empty-state"><div class="emoji">&#128205;</div><p>Finding runs near you&hellip;</p></div>`;
+    SharedUI.openPanel(document.getElementById('runnow-panel'));
+    runNowSortMode = 'time';
+    runNowUserLoc = null;
+
     const now = new Date();
     const scored = runs.map(r => ({ r, status: Velocity.statusOf(r, now) })).filter(x => x.status.phase !== 'expired');
-    const soon = scored.filter(x => x.status.phase === 'soon').sort((a, b) => a.status.minutesDiff - b.status.minutesDiff);
-    const pool = soon.length ? soon : scored.sort((a, b) => a.status.minutesDiff - b.status.minutesDiff).slice(0, 5);
-    if (pool.length) {
-      SharedUI.toast(soon.length ? `${pool.length} running soon` : 'Nothing soon — showing closest upcoming');
-      SharedUI.openRunDetail(pool[0].r);
-    } else {
-      SharedUI.toast('No runs found');
+    const soon = scored.filter(x => x.status.phase === 'soon');
+    runNowUsingSoon = soon.length > 0;
+    runNowPool = (runNowUsingSoon ? soon : scored).sort((a, b) => a.status.minutesDiff - b.status.minutesDiff);
+
+    renderRunNowPanel();
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => { runNowUserLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; renderRunNowPanel(); },
+        () => {},
+        { timeout: 8000 }
+      );
+    }
+  }
+
+  function renderRunNowPanel() {
+    const content = document.getElementById('runnow-content');
+
+    if (!runNowPool.length) {
+      content.innerHTML = `
+        <div class="runnow-header">Run Now</div>
+        <div class="empty-state"><div class="emoji">&#127769;</div><p>No upcoming runs found right now.</p></div>
+      `;
+      return;
+    }
+
+    if (runNowUserLoc) {
+      runNowPool.forEach(x => { x.distanceKm = Velocity.haversineKm(runNowUserLoc.lat, runNowUserLoc.lng, x.r.lat, x.r.lng); });
+    }
+
+    const sorted = [...runNowPool].sort((a, b) =>
+      runNowSortMode === 'distance' && runNowUserLoc ? a.distanceKm - b.distanceKm : a.status.minutesDiff - b.status.minutesDiff
+    );
+
+    const headerNote = runNowUsingSoon ? 'running soon' : 'nothing running soon — closest upcoming';
+    const sortToggle = runNowUserLoc ? `
+      <div class="filter-toggle-row" style="margin-bottom:16px;">
+        <div class="filter-toggle${runNowSortMode === 'time' ? ' active' : ''}" id="sort-time">Closest time</div>
+        <div class="filter-toggle${runNowSortMode === 'distance' ? ' active' : ''}" id="sort-distance">Nearest location</div>
+      </div>
+    ` : '';
+
+    content.innerHTML = `
+      <div class="runnow-header">Run Now</div>
+      <div class="runnow-sub">${sorted.length} ${sorted.length > 1 ? 'options' : 'option'} &mdash; ${headerNote}</div>
+      ${sortToggle}
+      ${sorted.map(({ r, status, distanceKm }) => `
+        <div class="runnow-card" data-run-id="${r.id}">
+          <span class="runnow-status">${status.label}</span>
+          <div class="runnow-card-name">${r.name}</div>
+          <div class="runnow-meta">${r.location_name}</div>
+          <div class="runnow-meta">${Velocity.typeLabel(r)}${distanceKm != null ? ' &middot; ' + distanceKm.toFixed(1) + ' km away' : ''}</div>
+        </div>
+      `).join('')}
+    `;
+
+    content.querySelectorAll('.runnow-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const r = runs.find(x => x.id === card.dataset.runId);
+        if (r) SharedUI.openRunDetail(r);
+      });
+    });
+
+    if (runNowUserLoc) {
+      document.getElementById('sort-time').addEventListener('click', () => { runNowSortMode = 'time'; renderRunNowPanel(); });
+      document.getElementById('sort-distance').addEventListener('click', () => { runNowSortMode = 'distance'; renderRunNowPanel(); });
     }
   }
 

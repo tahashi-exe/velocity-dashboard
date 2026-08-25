@@ -1,10 +1,10 @@
 /* ---------- v2 prototype: calendar grid ----------
-   PRD.md §4.9 — day boxes showing runs per day. Shared by Variant A (behind
-   a toggle, narrow side panel — rendered "compact") and Variant B (the
-   primary view, full width). Redesigned per calendar.webp: vertically
-   stacked day bands in a deterministic per-weekday pastel palette, big bold
-   date numerals, and runs as dark pill chips — replacing the earlier
-   horizontal grid of small bordered tiles.
+   PRD.md §4.9 — day boxes showing runs per day, opened from Variant A's
+   narrow side panel (always rendered "compact"). Redesigned per
+   calendar.webp: vertically stacked day bands in a deterministic
+   per-weekday pastel palette, big bold date numerals, and runs as dark
+   pill chips — replacing the earlier horizontal grid of small bordered
+   tiles.
    Recurring runs render on every matching weekday in the visible range —
    the concrete expression of "permanent weekly slot" (PRD.md §4.6). */
 
@@ -101,25 +101,5 @@ const Calendar = (() => {
     return el;
   }
 
-  // A week-at-a-glance density rail: one chip per day, bar height ~ run count.
-  function buildWeekRail(runs) {
-    const days = visibleDays('week');
-    const counts = days.map(d => runsForDay(runs, d).length);
-    const max = Math.max(1, ...counts);
-    const el = document.createElement('div');
-    el.className = 'week-rail';
-    el.innerHTML = days.map((d, i) => {
-      const pal = DAY_PALETTE[d.getDay()];
-      const isToday = dateKey(d) === dateKey(new Date());
-      return `
-        <div class="day-chip${isToday ? ' day-chip-today' : ''}">
-          <div class="day-chip-bar" style="height:${8 + (counts[i] / max) * 28}px;background:${isToday ? pal.text : pal.bg}"></div>
-          <div class="day-chip-label">${d.toLocaleDateString('en-GB', { weekday: 'narrow' })}</div>
-        </div>
-      `;
-    }).join('');
-    return el;
-  }
-
-  return { buildGrid, buildWeekRail, visibleDays, runsForDay };
+  return { buildGrid, visibleDays, runsForDay };
 })();

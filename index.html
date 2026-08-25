@@ -17,10 +17,6 @@
 </head>
 <body>
 
-<!-- Prototype notice: this branch is throwaway per the mattpocock/skills
-     "prototype" skill — three structural UI variants switchable below,
-     nothing here is meant to merge to main as-is. -->
-
 <!-- Landing page: live globe-to-map background, decorative + non-interactive -->
 <div id="landing-page">
   <div id="landing-map"></div>
@@ -58,11 +54,7 @@
 
 <div id="overlay" class="overlay"></div>
 
-<!-- Each variant renders its own topbar/layout into here -->
 <main id="app-root"></main>
-
-<!-- Prototype-only: variant switcher, per prototype skill UI.md -->
-<div id="variant-switcher" class="variant-switcher"></div>
 
 <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
 <script src="data.js"></script>
@@ -71,12 +63,8 @@
 <script src="landing-map.js"></script>
 <script src="shared-ui.js"></script>
 <script src="variant-a.js"></script>
-<script src="variant-b.js"></script>
-<script src="variant-c.js"></script>
-<script src="switcher.js"></script>
 <script>
-  mountSwitcher();
-  mountVariant();
+  VariantA.mount();
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }

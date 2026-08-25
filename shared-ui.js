@@ -1,7 +1,7 @@
 /* ---------- v2 prototype: shared chrome ----------
-   Landing → onboarding → run detail panel → toast. Identical across all
-   three variants (PRD.md §4.3/§4.5 card hierarchy lives here once, since the
-   variants disagree about *layout*, not about what a run card says). */
+   Landing → onboarding → run detail panel → toast, used by Variant A
+   (the only variant left — B/C and the switcher were dropped once this
+   one was picked to keep iterating on). */
 
 const SharedUI = (() => {
   const overlay = document.getElementById('overlay');
@@ -268,7 +268,7 @@ const SharedUI = (() => {
     });
   }
 
-  /* ---------- type filter chips (shared by Variant A's sheet + Variant C's feed) ---------- */
+  /* ---------- type filter chips (Variant A's bottom sheet) ---------- */
 
   function typeFilterChipsHtml(active) {
     const options = [{ key: 'all', label: 'All' }, ...Velocity.CATEGORIES.running.types];
@@ -288,7 +288,6 @@ const SharedUI = (() => {
     document.getElementById('lets-run-btn').addEventListener('click', () => {
       landingPage.classList.add('hidden');
       LandingMap.destroy();
-      document.getElementById('variant-switcher').classList.add('visible');
       if (!Velocity.getPrefs()) {
         openOnboarding({}, () => maybeShowInstallTutorial(onEnter));
       } else {
