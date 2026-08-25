@@ -31,11 +31,14 @@ const Velocity = (() => {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   }
 
-  // v1's `type` field (social/training/track) collapses onto the new 5-value
-  // running taxonomy — social stays social, training/track both read as
-  // "training" for pin-color/type purposes (track detail lives in `details.surface`).
+  // Records already carry the 5-value running taxonomy above, so pass those
+  // through untouched — collapsing them was hiding the Tempo/Long run/Pyramid
+  // filters entirely. v1's legacy `track` (and anything unrecognised) still
+  // reads as "training" for pin-color/type purposes, with the track detail
+  // living in `details.surface`.
+  const TYPE_KEYS = CATEGORIES.running.types.map(t => t.key);
   function mapOldTypeToKey(oldType) {
-    return oldType === 'social' ? 'social' : 'training';
+    return TYPE_KEYS.includes(oldType) ? oldType : 'training';
   }
 
   function toRun(item, kind) {

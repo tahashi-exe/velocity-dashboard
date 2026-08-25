@@ -4,11 +4,11 @@ A private assistant for maintaining VelocityAE's `clubs.json` and `events.json`.
 It is separate from the GitHub Pages website and runs as its own always-on
 Node.js process (see [Deploying to Railway](#deploying-to-railway) below).
 
-There is no AI involved. The bot sends you a fill-in-the-blanks template for
-a club or event, you edit the values in Telegram and send it back, and the
-bot shows you a preview. Nothing is written until you press **Approve and
-publish** — that's the only step that creates a GitHub commit, and GitHub
-Pages redeploys from it automatically.
+There is no AI involved. The bot asks you one question at a time — with
+buttons wherever there is a fixed set of answers — then shows you a preview.
+Nothing is written until you press **Approve and publish**; that's the only
+step that creates a GitHub commit, and GitHub Pages redeploys from it
+automatically.
 
 ## 1. Create the bot
 
@@ -43,6 +43,10 @@ repository with **Contents: Read and write** permission. Add it as
 `GITHUB_TOKEN`; set `GITHUB_REPOSITORY` to `owner/repository-name` and leave
 `GITHUB_BRANCH=main` unless you deploy from another branch.
 
+Optionally set `DRAFTS_FILE` to control where in-progress answers are saved
+(see [Drafts](#drafts) below). The default is a file in the system temp
+directory, which is fine everywhere.
+
 Never commit `.env`, paste a bot token into chat, or put any of these values
 in the website JavaScript.
 
@@ -59,59 +63,111 @@ below.
 
 | Command | What it does |
 |---|---|
-| `/newclub` | Blank template for a new recurring club |
-| `/editclub <exact name>` | Template pre-filled with an existing club's values |
-| `/newevent` | Blank template for a new one-off event |
-| `/editevent <exact name>` | Template pre-filled with an existing event's values |
-| `/listclubs` / `/listevents` | Names of everything currently in the data, so you know the exact spelling to pass to `/editclub` / `/editevent` |
-| `/cancel` | Discard whatever template you were mid-way through filling in |
+| `/newclub` | Walks you through a new recurring club |
+| `/newevent` | Walks you through a new one-off event |
+| `/editclub <exact name>` | Field menu for an existing club — change just one thing |
+| `/editevent <exact name>` | Field menu for an existing event |
+| `/listclubs` / `/listevents` | Names of everything currently in the data |
+| `/cancel` | Drop whatever you were part-way through |
 
-Flow:
+`/editclub` and `/editevent` with **no name** list the existing records as
+tappable buttons, so you don't have to get the spelling right on a phone.
 
-1. Send `/newclub` (or `/editclub "Frame Run Club"`, etc).
-2. The bot replies with a template like:
-   ```
-   name: 
-   location_name: 
-   maps_link: (optional — paste a Google Maps link and leave lat/lng below blank)
-   lat: 
-   lng: 
-   pace: easy / social | tempo | training
-   type: social | training | track
-   surface: track | beach | road
-   freebies: yes or no
-   day: monday | tuesday | wednesday | thursday | friday | saturday | sunday
-   time: HH:MM, 24h, e.g. 18:30
-   link: 
-   notes: (optional)
-   ```
-3. Copy it, fill in every value after each `key:` (for edits, only change what's
-   different — the rest is already filled in), and send it back as one message.
-4. If something's missing or invalid, the bot tells you exactly which field
-   and why — fix it and resend the whole template.
-5. Once it parses cleanly, you get a preview with **Approve and publish** /
-   **Reject** buttons. Approve creates one GitHub commit and replies with its
-   link. Reject discards it — nothing changes.
-6. Wait about 1–2 minutes for GitHub Pages to deploy, then refresh VelocityAE.
+### Adding something new
 
-**Coordinates:** open the spot in Google Maps, tap Share → Copy Link, and
-paste that into `maps_link:` — leave `lat:`/`lng:` blank and the bot fills
-them in automatically (works with both full links and shortened
-`maps.app.goo.gl` ones). If it can't find coordinates in the link (rare —
-usually an odd redirect), it'll tell you, and you can paste the lat/lng
-numbers directly instead: right-click the pin in Maps and they're at the top
-of the context menu.
+Send `/newclub` (or `/newevent`). The bot then asks, one message at a time:
+
+1. **Name** — type it exactly as it should appear on the map.
+2. **Meeting point** — the place name people recognise ("Kite Beach").
+3. **Map pin** — three ways, whichever is easiest (see below).
+4. **Run type** — buttons: Social · Tempo · Training · Long run · Pyramid session.
+5. **Surface** — buttons: Track · Beach · Road.
+6. **Freebies** — buttons: Yes · No.
+7. **Day** (clubs) — buttons, Monday…Sunday.
+   **Date** (events) — typed, `YYYY-MM-DD`.
+8. **Start time** — typed, 24-hour `HH:MM`.
+9. **Link** — Instagram profile or booking page, must start with `https://`.
+10. **Notes** — optional; tap **Skip** if there's nothing.
+
+Every question carries **Back** and **Cancel**; Notes also carries **Skip**.
+Anything typed that doesn't validate gets a plain-English reason and the same
+question again — nothing else is lost. Fixed-choice fields are buttons, so an
+invalid run type or day is impossible in the first place.
+
+After the last question you get a preview with **Approve and publish**,
+**Edit a field**, and **Reject**. Approve creates one GitHub commit, stamps
+`last_updated` with today's Dubai date, and replies with the commit link.
+Wait about 1–2 minutes for GitHub Pages to deploy, then refresh VelocityAE.
+
+### The map pin — three ways
+
+- **Drop a Telegram pin** (easiest on mobile): paperclip → Location → send.
+- **Paste a Google Maps link**: Share → Copy link. Full links and shortened
+  `maps.app.goo.gl` ones both work; the bot follows the redirect (and Google's
+  consent page) to find the coordinates.
+- **Type the numbers**: `25.1950, 55.2358`. In Maps, right-click the pin and
+  the coordinates are at the top of the context menu.
+
+If a link doesn't yield coordinates (rare — usually an odd redirect), the bot
+says so and you can use either of the other two ways.
+
+### Editing something that already exists
+
+`/editclub Frame Run Club` shows the whole record as a list, with one button
+per field:
+
+```
+Editing club "Frame Run Club"
+
+Name: Frame Run Club
+Meeting point: Dubai Design District
+Map pin: 25.1866742, 55.3019726
+Run type: Training
+Surface: Road
+Freebies: No
+Day: Wednesday
+Start time: 19:30
+Link: https://www.instagram.com/framerunclub
+Notes: (none)
+```
+
+Tap **Start time**, send `19:00`, and you're straight back at this list — no
+re-walking the other nine questions. Tap **Review and publish** when you're
+done, then **Approve and publish** on the preview.
+
+A field flagged `⚠️` is one the bot can't publish as-is. That happens with
+older records: `LFG` still stores the retired run type `track`, so editing it
+asks you to pick one of the five real types before publishing. Fields the bot
+no longer asks about (the retired `pace`) are kept in the JSON exactly as they
+were.
+
+### Run types
+
+The five types match the filter chips in the live app exactly
+(`data.js` → `CATEGORIES.running.types`): **social**, **tempo**, **training**,
+**long_run**, **pyramid**. Older records storing `track` are read as
+*training* by the site, so nothing breaks until you edit them.
+
+## Drafts
+
+Answers are written to a small JSON file after every step and deleted the
+moment you publish or cancel. If the process restarts mid-entry, the bot picks
+the session back up and re-asks the question you were on.
+
+**This protects against restarts and crashes, not redeploys.** Railway gives
+each deploy a fresh filesystem, so anything half-finished when you push new
+code is gone — start it again. Set `DRAFTS_FILE` to a path on a mounted volume
+if you ever want drafts to survive deploys too.
 
 ## Current limits
 
 - The bot only accepts messages from the configured Telegram chat ID.
-- Text only — no screenshot/photo parsing (that required the AI step, which
-  this version deliberately doesn't use).
-- Pending templates and unapproved previews are held in memory. If the bot
-  restarts before you approve, just resend the update.
+- Text, buttons, and location pins only — no screenshot/photo parsing (that
+  needs an AI step, which this version deliberately doesn't use).
+- One entry at a time per chat; starting `/newclub` drops any earlier draft.
 - `/editclub` / `/editevent` match on exact existing name (case-insensitive).
-  Renaming is fine — edit the `name:` line in the template; the bot still
-  knows which original record to replace.
+  Renaming is fine — edit the Name field; the bot still knows which original
+  record to replace.
 
 ## Deploying to Railway
 

@@ -1,7 +1,11 @@
 import 'dotenv/config'
 import { Bot, InlineKeyboard } from 'grammy'
-import { buildTemplate, parseTemplate, recordSummary } from './template.js'
+import {
+  createSession, currentStep, goBack, openField, openMenu, promptText, recordFrom,
+  recordSummary, skipStep, stepsFor, submitAnswer, thingFor, validateAll,
+} from './template.js'
 import { getJsonFile, updateJsonFile } from './github.js'
+import { deleteDraft, draftsFile, loadDrafts, saveDraft } from './drafts.js'
 
 const required = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ADMIN_CHAT_ID', 'GITHUB_TOKEN', 'GITHUB_REPOSITORY']
 
@@ -13,10 +17,9 @@ const bot = new Bot(process.env.TELEGRAM_BOT_TOKEN)
 const adminChatId = String(process.env.TELEGRAM_ADMIN_CHAT_ID)
 const branch = process.env.GITHUB_BRANCH || 'main'
 
-// chatId -> { collection: 'clubs' | 'events', action: 'add' | 'update', matchName: string | null }
-const awaitingTemplate = new Map()
-// proposalId -> { collection, action, matchName, record }
-const pending = new Map()
+// chatId -> session (see template.js). Restored from disk on boot so a restart
+// mid-entry resumes instead of losing everything.
+const sessions = loadDrafts()
 
 function todayInDubai() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -46,147 +49,411 @@ async function findExisting(collection, name) {
   return { file, record }
 }
 
-function proposalMessage(proposal) {
-  const target = pathFor(proposal.collection)
-  const action = proposal.action === 'add' ? 'Add new' : `Update "${proposal.matchName}" in`
-  return [`${action} ${target}`, '', recordSummary(proposal.record)].join('\n')
+function chatKeyOf(ctx) {
+  return String(ctx.chat?.id ?? ctx.from?.id)
 }
 
-async function startTemplate(ctx, collection, action, matchName, existing) {
-  awaitingTemplate.set(String(ctx.chat.id), { collection, action, matchName })
-  const kind = collection === 'clubs' ? 'recurring club' : 'one-off event'
-  const verb = action === 'add' ? 'Fill in every line below' : 'Edit whatever changed, keep the rest as-is'
-  const template = buildTemplate(collection, existing || null)
-  await ctx.reply(
-    `${action === 'add' ? 'New' : 'Editing'} ${kind}${action === 'update' ? ` — "${matchName}"` : ''}\n` +
-    `${verb}, then send it back as one message.\n\n${template}`,
-  )
+function persist(ctx, session) {
+  sessions.set(chatKeyOf(ctx), session)
+  saveDraft(chatKeyOf(ctx), session)
 }
+
+function forget(ctx) {
+  sessions.delete(chatKeyOf(ctx))
+  deleteDraft(chatKeyOf(ctx))
+}
+
+/* ---------- rendering ---------- */
+
+function chunk(items, perRow) {
+  const rows = []
+  for (let i = 0; i < items.length; i += perRow) rows.push(items.slice(i, i + perRow))
+  return rows
+}
+
+function stepKeyboard(session) {
+  const step = currentStep(session)
+  const keyboard = new InlineKeyboard()
+
+  if (step.kind === 'choice') {
+    for (const row of chunk(step.options, step.options.length > 4 ? 3 : 2)) {
+      for (const option of row) keyboard.text(option.label, `ans:${option.value}`)
+      keyboard.row()
+    }
+  } else if (step.kind === 'boolean') {
+    keyboard.text('Yes', 'ans:yes').text('No', 'ans:no').row()
+  }
+
+  const nav = []
+  if (session.mode === 'field') nav.push(['Back to fields', 'nav:back'])
+  else if (session.stepIndex > 0) nav.push(['Back', 'nav:back'])
+  if (step.optional) nav.push(['Skip', 'nav:skip'])
+  nav.push(['Cancel', 'nav:cancel'])
+  for (const [label, data] of nav) keyboard.text(label, data)
+
+  return keyboard
+}
+
+function stepMessage(session, notice) {
+  const step = currentStep(session)
+  const steps = stepsFor(session.collection)
+  const head = session.mode === 'field'
+    ? `Editing ${step.title}`
+    : `${step.title} — step ${session.stepIndex + 1} of ${steps.length}`
+  const lines = []
+  if (notice) lines.push(notice, '')
+  lines.push(head, '', promptText(step, session.collection))
+  return lines.join('\n')
+}
+
+function menuKeyboard(session) {
+  const keyboard = new InlineKeyboard()
+  for (const row of chunk(stepsFor(session.collection), 2)) {
+    for (const step of row) keyboard.text(step.title, `field:${step.key}`)
+    keyboard.row()
+  }
+  return keyboard.text('Review and publish', 'menu:review').row().text('Cancel', 'nav:cancel')
+}
+
+function menuMessage(session, notice) {
+  const kind = thingFor(session.collection)
+  const head = session.action === 'update'
+    ? `Editing ${kind} "${session.matchName}"`
+    : `New ${kind}`
+  const problems = validateAll(session.collection, session.answers)
+  const lines = []
+  if (notice) lines.push(notice, '')
+  lines.push(head, '', recordSummary(session.collection, session.answers), '')
+  lines.push(problems.length
+    ? `⚠️ Still needs fixing: ${problems.map((p) => p.title).join(', ')}`
+    : 'Tap a field to change just that one, then Review and publish.')
+  return lines.join('\n')
+}
+
+function previewKeyboard(session) {
+  return new InlineKeyboard()
+    .text('Approve and publish', `approve:${session.previewId}`).row()
+    .text('Edit a field', `edit:${session.previewId}`)
+    .text('Reject', `reject:${session.previewId}`)
+}
+
+function previewMessage(session, notice) {
+  const target = pathFor(session.collection)
+  const head = session.action === 'add'
+    ? `Add new ${thingFor(session.collection)} to ${target}`
+    : `Update "${session.matchName}" in ${target}`
+  const lines = []
+  if (notice) lines.push(notice, '')
+  lines.push(head, '', recordSummary(session.collection, session.answers), '')
+  lines.push('Nothing is written until you tap Approve and publish.')
+  return lines.join('\n')
+}
+
+// Single entry point for showing whatever the session is currently waiting on.
+async function render(ctx, session, notice) {
+  persist(ctx, session)
+  if (session.mode === 'walk' || session.mode === 'field') {
+    return ctx.reply(stepMessage(session, notice), { reply_markup: stepKeyboard(session) })
+  }
+  if (session.mode === 'menu') {
+    return ctx.reply(menuMessage(session, notice), { reply_markup: menuKeyboard(session) })
+  }
+  if (!session.previewId) session.previewId = randomId()
+  persist(ctx, session)
+  return ctx.reply(previewMessage(session, notice), { reply_markup: previewKeyboard(session) })
+}
+
+/* ---------- admin guard ---------- */
 
 bot.use(async (ctx, next) => {
-  if (String(ctx.chat?.id) !== adminChatId) {
+  if (String(ctx.chat?.id ?? ctx.from?.id) !== adminChatId) {
     if (ctx.message) await ctx.reply('This is a private Velocity admin bot.')
     return
   }
   await next()
 })
 
-bot.command('start', (ctx) => ctx.reply(
-  'Velocity admin bot is ready.\n\n' +
-  '/newclub — add a recurring club\n' +
-  '/editclub <exact name> — edit an existing club\n' +
-  '/newevent — add a one-off event\n' +
-  '/editevent <exact name> — edit an existing event\n' +
-  '/listclubs, /listevents — see what exists\n' +
-  '/cancel — cancel whatever you were filling in\n\n' +
-  "I'll send you a template to fill in and reply with. Nothing publishes until you press Approve.",
-))
+/* ---------- commands ---------- */
+
+const START_TEXT = 'Velocity admin bot is ready.\n\n'
+  + '/newclub — add a recurring club\n'
+  + '/newevent — add a one-off event\n'
+  + '/editclub <name> — change one field on a club\n'
+  + '/editevent <name> — change one field on an event\n'
+  + '/listclubs, /listevents — see what exists\n'
+  + '/cancel — drop whatever you were part-way through\n\n'
+  + "I'll ask one question at a time, with buttons wherever there's a fixed set of answers. "
+  + 'Nothing publishes until you tap Approve and publish.'
+
+bot.command('start', (ctx) => ctx.reply(START_TEXT))
 
 bot.command('help', (ctx) => ctx.reply(
-  'Use /newclub or /newevent for a blank template, or /editclub <name> / /editevent <name> ' +
-  'to get one pre-filled with the existing record. Edit the values after each "key:", send the ' +
-  'whole message back, then press Approve and publish on the preview.',
+  'How it works:\n\n'
+  + '• /newclub or /newevent walks you through one question at a time. Tap buttons for '
+  + 'run type, surface, freebies and day; type the rest.\n'
+  + '• For the map pin: drop a Telegram location pin (paperclip → Location), paste a Google Maps '
+  + 'link, or type "25.1950, 55.2358".\n'
+  + '• Every question has Back and Cancel. Notes also has Skip.\n'
+  + '• /editclub <name> or /editevent <name> shows the record as a list of fields — tap the one '
+  + 'you want to change, answer it, then Review and publish.\n'
+  + '• Answers are saved as you go, so a bot restart mid-entry picks up where you left off.\n\n'
+  + 'Only the Approve and publish tap writes to GitHub.',
 ))
 
 bot.command('cancel', async (ctx) => {
-  awaitingTemplate.delete(String(ctx.chat.id))
-  await ctx.reply('Cancelled. Nothing was changed.')
+  const had = sessions.has(chatKeyOf(ctx))
+  forget(ctx)
+  await ctx.reply(had ? 'Cancelled. Nothing was changed.' : 'Nothing was in progress.')
 })
 
-bot.command('newclub', (ctx) => startTemplate(ctx, 'clubs', 'add', null, null))
-bot.command('newevent', (ctx) => startTemplate(ctx, 'events', 'add', null, null))
+async function startNew(ctx, collection) {
+  const replaced = sessions.has(chatKeyOf(ctx))
+  const session = createSession({ collection, action: 'add' })
+  await render(ctx, session, replaced ? 'Starting fresh — the previous draft was dropped.' : null)
+}
+
+bot.command('newclub', (ctx) => startNew(ctx, 'clubs'))
+bot.command('newevent', (ctx) => startNew(ctx, 'events'))
+
+// With no name argument, offer the existing records as buttons — easier than
+// getting the exact spelling right on a phone.
+async function offerPicker(ctx, collection) {
+  const file = await getJsonFile(githubBase(pathFor(collection)))
+  if (!file.data.length) return ctx.reply(`No ${collection} yet. Use /new${thingFor(collection)} to add one.`)
+
+  const keyboard = new InlineKeyboard()
+  const tooLong = []
+  for (const item of file.data) {
+    const data = `pick:${collection}:${item.name}`
+    // Telegram caps callback_data at 64 bytes.
+    if (Buffer.byteLength(data) > 64) tooLong.push(item.name)
+    else keyboard.text(item.name, data).row()
+  }
+  const note = tooLong.length
+    ? `\n\nToo long for a button — send /edit${thingFor(collection)} <name> for: ${tooLong.join(', ')}`
+    : ''
+  return ctx.reply(`Which ${thingFor(collection)} do you want to edit?${note}`, { reply_markup: keyboard })
+}
+
+async function startEdit(ctx, collection, name) {
+  const { record } = await findExisting(collection, name)
+  if (!record) return ctx.reply(`No ${thingFor(collection)} found matching "${name}". Check /list${collection} for exact names.`)
+  const session = createSession({ collection, action: 'update', matchName: record.name, record })
+  return render(ctx, session)
+}
 
 bot.command('editclub', async (ctx) => {
   const name = parseNameArg(ctx.match)
-  if (!name) return ctx.reply('Usage: /editclub <exact club name> (no quotes needed) — see /listclubs for the exact names.')
-  const { record } = await findExisting('clubs', name)
-  if (!record) return ctx.reply(`No club found matching "${name}". Check /listclubs for exact names.`)
-  await startTemplate(ctx, 'clubs', 'update', record.name, record)
+  if (!name) return offerPicker(ctx, 'clubs')
+  return startEdit(ctx, 'clubs', name)
 })
 
 bot.command('editevent', async (ctx) => {
   const name = parseNameArg(ctx.match)
-  if (!name) return ctx.reply('Usage: /editevent <exact event name> (no quotes needed) — see /listevents for the exact names.')
-  const { record } = await findExisting('events', name)
-  if (!record) return ctx.reply(`No event found matching "${name}". Check /listevents for exact names.`)
-  await startTemplate(ctx, 'events', 'update', record.name, record)
+  if (!name) return offerPicker(ctx, 'events')
+  return startEdit(ctx, 'events', name)
 })
 
 bot.command('listclubs', async (ctx) => {
   const file = await getJsonFile(githubBase('clubs.json'))
-  if (!file.data.length) return ctx.reply('No clubs yet.')
+  if (!file.data.length) return ctx.reply('No clubs yet. /newclub adds one.')
   await ctx.reply(file.data.map((c) => `• ${c.name} — ${c.day} ${c.time}`).join('\n'))
 })
 
 bot.command('listevents', async (ctx) => {
   const file = await getJsonFile(githubBase('events.json'))
-  if (!file.data.length) return ctx.reply('No events yet.')
+  if (!file.data.length) return ctx.reply('No events yet. /newevent adds one.')
   await ctx.reply(file.data.map((e) => `• ${e.name} — ${e.date} ${e.time}`).join('\n'))
 })
 
-bot.on('message:text', async (ctx) => {
-  const chatKey = String(ctx.chat.id)
-  const awaiting = awaitingTemplate.get(chatKey)
-  if (!awaiting) {
-    await ctx.reply('Use /newclub, /editclub <name>, /newevent, or /editevent <name> to get started.')
-    return
+/* ---------- answering ---------- */
+
+async function handleAnswer(ctx, session, input) {
+  const step = currentStep(session)
+  if (step.kind === 'location' && typeof input === 'string' && /^https?:\/\//i.test(input)) {
+    await ctx.replyWithChatAction('typing')
   }
 
-  if (/maps_link:\s*https?:\/\//i.test(ctx.message.text)) await ctx.replyWithChatAction('typing')
-  const { record, errors } = await parseTemplate(awaiting.collection, ctx.message.text)
-  if (errors.length) {
-    await ctx.reply(`Fix these and send the full template again:\n\n${errors.map((e) => `• ${e}`).join('\n')}`)
-    return
+  const result = await submitAnswer(session, input)
+  if (result.error) {
+    persist(ctx, session)
+    return ctx.reply(stepMessage(session, `⚠️ ${result.error}`), { reply_markup: stepKeyboard(session) })
   }
-
-  awaitingTemplate.delete(chatKey)
-  const proposal = { collection: awaiting.collection, action: awaiting.action, matchName: awaiting.matchName, record }
-  const id = randomId()
-  pending.set(id, proposal)
-  const keyboard = new InlineKeyboard().text('Approve and publish', `approve:${id}`).text('Reject', `reject:${id}`)
-  await ctx.reply(proposalMessage(proposal), { reply_markup: keyboard })
-})
-
-async function publishProposal(proposal) {
-  const path = pathFor(proposal.collection)
-  const base = githubBase(path)
-  const file = await getJsonFile(base)
-  const record = { ...proposal.record, last_updated: todayInDubai() }
-  let next
-
-  if (proposal.action === 'update') {
-    const index = file.data.findIndex((item) => item.name.toLowerCase() === proposal.matchName.toLowerCase())
-    if (index === -1) throw new Error(`Could not find "${proposal.matchName}" in ${path} anymore. Resend it as /new${proposal.collection.slice(0, -1)}.`)
-    next = [...file.data]
-    next[index] = record
-  } else {
-    if (file.data.some((item) => item.name.toLowerCase() === record.name.toLowerCase())) {
-      throw new Error(`"${record.name}" already exists in ${path}. Use /edit${proposal.collection.slice(0, -1)} ${record.name} instead.`)
-    }
-    next = [...file.data, record]
-  }
-
-  return updateJsonFile({ ...base, sha: file.sha, data: next, message: `data: ${proposal.action} ${record.name}` })
+  return render(ctx, session)
 }
 
+bot.on('message:location', async (ctx) => {
+  const session = sessions.get(chatKeyOf(ctx))
+  const step = session && currentStep(session)
+  if (!step) {
+    return ctx.reply('Thanks, but nothing is waiting on a location right now. Start with /newclub or /newevent.')
+  }
+  if (step.kind !== 'location') {
+    return ctx.reply(`I'm on "${step.title}" right now — a pin doesn't fit here. Answer that first.`)
+  }
+  return handleAnswer(ctx, session, ctx.message.location)
+})
+
+bot.on('message:text', async (ctx) => {
+  const session = sessions.get(chatKeyOf(ctx))
+  if (!session) {
+    return ctx.reply('Nothing in progress. Use /newclub, /newevent, /editclub <name> or /editevent <name>.')
+  }
+  const step = currentStep(session)
+  if (!step) {
+    return ctx.reply(session.mode === 'menu'
+      ? 'Tap a field above to change it, or Review and publish.'
+      : 'Use the buttons on the preview above — Approve and publish, Edit a field, or Reject.')
+  }
+  return handleAnswer(ctx, session, ctx.message.text)
+})
+
+/* ---------- callbacks ---------- */
+
+async function requireSession(ctx) {
+  const session = sessions.get(chatKeyOf(ctx))
+  if (!session) {
+    await ctx.answerCallbackQuery({ text: 'That draft is gone. Start again with /newclub or /editclub.' })
+    return null
+  }
+  return session
+}
+
+bot.callbackQuery(/^ans:(.+)$/, async (ctx) => {
+  const session = await requireSession(ctx)
+  if (!session) return
+  const step = currentStep(session)
+  if (!step) {
+    return ctx.answerCallbackQuery({ text: 'That question has already been answered.' })
+  }
+  await ctx.answerCallbackQuery()
+  const label = step.options?.find((o) => o.value === ctx.match[1])?.label ?? ctx.match[1]
+  // Collapse the answered question into a one-line record of what was chosen.
+  await ctx.editMessageText(`✓ ${step.title}: ${label}`).catch(() => {})
+  await handleAnswer(ctx, session, ctx.match[1])
+})
+
+bot.callbackQuery('nav:back', async (ctx) => {
+  const session = await requireSession(ctx)
+  if (!session) return
+  const result = goBack(session)
+  if (result.error) return ctx.answerCallbackQuery({ text: result.error })
+  await ctx.answerCallbackQuery()
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  await render(ctx, session)
+})
+
+bot.callbackQuery('nav:skip', async (ctx) => {
+  const session = await requireSession(ctx)
+  if (!session) return
+  const result = skipStep(session)
+  if (result.error) return ctx.answerCallbackQuery({ text: result.error })
+  await ctx.answerCallbackQuery({ text: 'Skipped.' })
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  await render(ctx, session)
+})
+
+bot.callbackQuery('nav:cancel', async (ctx) => {
+  forget(ctx)
+  await ctx.answerCallbackQuery({ text: 'Cancelled.' })
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  await ctx.reply('Cancelled. Nothing was changed.')
+})
+
+bot.callbackQuery(/^pick:(clubs|events):(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery()
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  await startEdit(ctx, ctx.match[1], ctx.match[2])
+})
+
+bot.callbackQuery(/^field:(.+)$/, async (ctx) => {
+  const session = await requireSession(ctx)
+  if (!session) return
+  const result = openField(session, ctx.match[1])
+  if (result.error) return ctx.answerCallbackQuery({ text: result.error })
+  await ctx.answerCallbackQuery()
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  await render(ctx, session)
+})
+
+bot.callbackQuery('menu:review', async (ctx) => {
+  const session = await requireSession(ctx)
+  if (!session) return
+  const problems = validateAll(session.collection, session.answers)
+  if (problems.length) {
+    await ctx.answerCallbackQuery({ text: 'Some fields still need an answer.' })
+    return ctx.reply(`Fix these first:\n${problems.map((p) => `• ${p.title} — ${p.problem}`).join('\n')}`)
+  }
+  await ctx.answerCallbackQuery()
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  session.mode = 'preview'
+  session.stepIndex = null
+  session.previewId = null
+  await render(ctx, session)
+})
+
+bot.callbackQuery(/^edit:(.+)$/, async (ctx) => {
+  const session = await requireSession(ctx)
+  if (!session) return
+  if (session.previewId !== ctx.match[1]) {
+    return ctx.answerCallbackQuery({ text: 'That preview is out of date — use the newest one.' })
+  }
+  openMenu(session)
+  await ctx.answerCallbackQuery()
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  await render(ctx, session)
+})
+
 bot.callbackQuery(/^reject:(.+)$/, async (ctx) => {
-  pending.delete(ctx.match[1])
+  const session = sessions.get(chatKeyOf(ctx))
+  if (session && session.previewId !== ctx.match[1]) {
+    return ctx.answerCallbackQuery({ text: 'That preview is out of date — use the newest one.' })
+  }
+  forget(ctx)
   await ctx.answerCallbackQuery({ text: 'Rejected. Nothing was changed.' })
-  await ctx.editMessageReplyMarkup()
+  await ctx.editMessageReplyMarkup().catch(() => {})
   await ctx.reply('Rejected. No files were changed.')
 })
 
+/* ---------- publishing ---------- */
+
+async function publishSession(session) {
+  const path = pathFor(session.collection)
+  const base = githubBase(path)
+  const file = await getJsonFile(base)
+  const answered = recordFrom(session.collection, session.answers)
+  let next
+
+  if (session.action === 'update') {
+    const index = file.data.findIndex((item) => item.name.toLowerCase() === session.matchName.toLowerCase())
+    if (index === -1) {
+      throw new Error(`Could not find "${session.matchName}" in ${path} anymore. Add it fresh with /new${thingFor(session.collection)}.`)
+    }
+    next = [...file.data]
+    // Spread the stored record first so fields the bot no longer asks about
+    // (e.g. the retired `pace`) survive the edit untouched.
+    next[index] = { ...file.data[index], ...answered, last_updated: todayInDubai() }
+  } else {
+    if (file.data.some((item) => item.name.toLowerCase() === answered.name.toLowerCase())) {
+      throw new Error(`"${answered.name}" already exists in ${path}. Use /edit${thingFor(session.collection)} ${answered.name} instead.`)
+    }
+    next = [...file.data, { ...answered, last_updated: todayInDubai() }]
+  }
+
+  return updateJsonFile({ ...base, sha: file.sha, data: next, message: `data: ${session.action} ${answered.name}` })
+}
+
 bot.callbackQuery(/^approve:(.+)$/, async (ctx) => {
-  const proposal = pending.get(ctx.match[1])
-  if (!proposal) {
-    await ctx.answerCallbackQuery({ text: 'This proposal has expired. Please resend it.' })
+  const session = sessions.get(chatKeyOf(ctx))
+  if (!session || session.mode !== 'preview' || session.previewId !== ctx.match[1]) {
+    await ctx.answerCallbackQuery({ text: 'This preview has expired. Please build it again.' })
     return
   }
   try {
     await ctx.answerCallbackQuery({ text: 'Publishing…' })
-    const result = await publishProposal(proposal)
-    pending.delete(ctx.match[1])
-    await ctx.editMessageReplyMarkup()
+    const result = await publishSession(session)
+    forget(ctx)
+    await ctx.editMessageReplyMarkup().catch(() => {})
     await ctx.reply(`Published to GitHub. GitHub Pages should update in about 1–2 minutes.\n${result.commit.html_url}`)
   } catch (error) {
     console.error(error)
@@ -195,5 +462,27 @@ bot.callbackQuery(/^approve:(.+)$/, async (ctx) => {
 })
 
 bot.catch((error) => console.error('Unhandled bot error:', error.error))
-bot.start({ drop_pending_updates: false })
-console.log('Velocity Telegram bot is running.')
+
+// Restored drafts: tell Taha what survived the restart and re-ask the question
+// he was on, so a redeploy/crash never silently swallows a half-typed entry.
+async function announceRestoredDraft() {
+  const session = sessions.get(adminChatId)
+  if (!session) return
+  const what = session.action === 'update' ? `edit of "${session.matchName}"` : `new ${thingFor(session.collection)}`
+  const notice = `I restarted, but your ${what} was saved — carrying on where we left off. /cancel to drop it.`
+  const fakeCtx = {
+    chat: { id: adminChatId },
+    reply: (text, other) => bot.api.sendMessage(adminChatId, text, other),
+  }
+  try {
+    await render(fakeCtx, session, notice)
+  } catch (error) {
+    console.error('Could not restore draft:', error.message)
+  }
+}
+
+bot.start({
+  drop_pending_updates: false,
+  onStart: () => { announceRestoredDraft() },
+})
+console.log(`Velocity Telegram bot is running. Drafts file: ${draftsFile()}`)
