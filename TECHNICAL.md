@@ -124,7 +124,7 @@ no custom design needed here.
 - **Data:** `categories`, `category_types`, `runs`, `profiles`, `rsvps`
   tables as above, with row-level security so users can only write their
   own `profiles`/`rsvps` rows; `runs` stays admin/bot-writable only.
-- **Frontend reads:** `script.js` reads from Supabase instead of fetching
+- **Frontend reads:** `data.js` reads from Supabase instead of fetching
   `clubs.json`/`events.json`. Recommended default: call the Supabase JS
   client directly from the browser (loaded via `<script>` tag, same pattern
   as Leaflet/MapLibre today) rather than standing up a separate API layer —
@@ -168,7 +168,7 @@ scoped.
    existing `clubs.json`/`events.json` into `runs`.
 2. **Telegram bot migration** — repoint the bot's publish step from GitHub
    commits to Supabase writes (§8).
-3. **Frontend read migration** — `script.js` reads from Supabase; new
+3. **Frontend read migration** — `data.js` reads from Supabase; new
    type/kind card hierarchy (PRD §4.5), "Register here" label, recurring
    events shown as a permanent slot (PRD §4.6).
 4. **Pin visuals** — implement the base-color + freebies-ring logic (§4).

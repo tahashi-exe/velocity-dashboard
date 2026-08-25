@@ -48,16 +48,14 @@ mocks only** — nothing syncs, nothing is shared between devices.
 ├── manifest.webmanifest, icon*.png/svg
 ├── clubs.json          # Recurring run clubs
 ├── events.json         # One-off events
-├── script.js           # ⚠️ DEAD — the old v1 Leaflet app. Not referenced by
-│                       #    index.html. Kept only as a reference copy.
 ├── PRD.md / TECHNICAL.md   # v2 product plan + schema/backend design
 ├── README.md           # Public-facing project description
 └── CLAUDE.md           # This file
 ```
 
-`script.js` is not loaded by anything. Don't edit it expecting a change, and
-don't take its logic as current — it still reads fields (`pace`) the app no
-longer uses.
+The old v1 single-file app (`script.js`, Leaflet-based) was deleted once the
+module split above replaced it. `PRD.md` §3 still describes it, correctly
+labelled as a historical "v1 recap" — don't read that section as current.
 
 ## Data schema
 
