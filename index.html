@@ -7,8 +7,11 @@
 <title>VelocityAE — Stay on the move</title>
 
 <link rel="manifest" href="manifest.webmanifest" />
-<link rel="apple-touch-icon" href="icon.svg" />
+<!-- iOS home-screen icon MUST be a PNG — Safari ignores an SVG apple-touch-icon
+     and falls back to screenshotting the top of the page instead. -->
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 

@@ -59,15 +59,21 @@ button:active {
   opacity: 0.75;
 }
 
-/* Top bar */
+/* Top bar.
+   iOS PWA note: index.html pairs `viewport-fit=cover` with
+   `apple-mobile-web-app-status-bar-style: black-translucent`, so the web view
+   extends *under* the status bar / Dynamic Island when launched from the home
+   screen. Every fixed edge in this file therefore carries an
+   env(safe-area-inset-*) term with an explicit `0px` fallback, so desktop and
+   non-notched rendering is byte-for-byte identical to before. */
 .topbar {
   position: fixed;
   top: 0; left: 0; right: 0;
-  height: 64px;
+  height: calc(64px + env(safe-area-inset-top, 0px));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: env(safe-area-inset-top, 0px) 24px 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   z-index: 1000;
@@ -161,7 +167,7 @@ button:active {
 /* Map */
 #map {
   position: fixed;
-  top: 64px; left: 0; right: 0; bottom: 0;
+  top: calc(64px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: 0;
 }
 
 /* Custom marker */
@@ -211,7 +217,9 @@ button:active {
   height: 100dvh;
   background: var(--surface);
   z-index: 2000;
-  padding: 32px 28px;
+  /* Full-height overlay: clear the notch at the top and the home indicator at
+     the bottom so panel content stays readable and scroll-reachable. */
+  padding: calc(32px + env(safe-area-inset-top, 0px)) 28px calc(32px + env(safe-area-inset-bottom, 0px));
   transition: transform 0.25s ease;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -233,7 +241,8 @@ button:active {
 
 .panel-close {
   position: absolute;
-  top: 16px;
+  /* Absolutely positioned, so it does not inherit .panel's inset padding. */
+  top: calc(16px + env(safe-area-inset-top, 0px));
   right: 18px;
   background: none;
   border: none;
@@ -391,7 +400,9 @@ button:active {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 24px;
+  /* Hero is centred, but keep it out from under the notch / home indicator
+     on short viewports where the content would otherwise reach the edges. */
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 24px calc(24px + env(safe-area-inset-bottom, 0px));
   transition: opacity 0.4s ease, visibility 0.4s ease;
   overflow: hidden;
 }
@@ -417,6 +428,10 @@ button:active {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* Belt-and-braces: #landing-page's padding already reserves the insets, but
+     the scrim/map siblings are inset:0, so keep the hero itself bounded too. */
+  max-width: 100%;
+  padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
 }
 
 #landing-page.hidden {
@@ -740,7 +755,12 @@ button:active {
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -6px 24px rgba(0,0,0,0.15);
   z-index: 900;
-  transform: translateY(calc(100% - 40px)); /* collapsed: just the drag handle — decluttered, and clears the corner switcher */
+  /* Collapsed: just the drag handle — decluttered, and clears the corner
+     switcher. The 40px peek is measured from the home indicator, not from the
+     physical screen edge, so the inset is added to the peek; otherwise the
+     handle would sit underneath the indicator and become untappable. */
+  transform: translateY(calc(100% - 40px - env(safe-area-inset-bottom, 0px)));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   transition: transform 0.25s ease;
   display: flex;
   flex-direction: column;
@@ -839,7 +859,7 @@ button:active {
 
 .toast {
   position: fixed;
-  bottom: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   background: var(--purple-dark);
@@ -871,7 +891,7 @@ button:active, .rsvp-btn:active, .scope-btn:active {
 }
 
 .map-surface { position: absolute; inset: 0; }
-#map-a { position: fixed; top: 64px; left: 0; right: 0; bottom: 0; }
+#map-a { position: fixed; top: calc(64px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: 0; }
 
 /* Topbar: translucent material over the map (apple-design §12) */
 .topbar {
@@ -1131,8 +1151,15 @@ button:active, .rsvp-btn:active, .scope-btn:active {
 /* ---------- Responsive ---------- */
 @media (max-width: 480px) {
   .scope-toggle { order: 3; width: 100%; margin-top: 8px; }
-  .topbar { flex-wrap: wrap; height: auto; min-height: 64px; padding: 12px 16px; }
-  .map-surface, #map-a { top: 96px; }
+  /* These overrides fire on exactly the phones that have a notch, so they must
+     re-apply the safe-area insets or they silently undo the fix above. */
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: calc(64px + env(safe-area-inset-top, 0px));
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  }
+  .map-surface, #map-a { top: calc(96px + env(safe-area-inset-top, 0px)); }
 }
 
 /* ---------- Reduced motion (apple-design §14) ---------- */

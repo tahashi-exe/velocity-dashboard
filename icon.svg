@@ -1,11 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- VelocityAE mark: a lime "V" cradling a map pin nested inside its counter.
+       All artwork sits inside a centred circle of radius 205 (the inner 80% of
+       the 512 canvas), so iOS's squircle mask and Android's circle mask never
+       clip it. The gradient is userSpaceOnUse so the pin's knock-out hole picks
+       up exactly the tile colour behind it. -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="512" y2="512">
       <stop offset="0%" stop-color="#6D28D9"/>
       <stop offset="100%" stop-color="#4C1D95"/>
     </linearGradient>
   </defs>
+
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <path d="M256 400s160-140 160-244A160 160 0 0 0 96 156c0 104 160 244 160 244z" fill="#A3E635"/>
-  <circle cx="256" cy="176" r="52" fill="#4C1D95"/>
+
+  <!-- The V -->
+  <path d="M120 165 L256 390 L392 165"
+        fill="none" stroke="#A3E635" stroke-width="54"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- The pin, nested in the V's counter. Its head crowns level with the V's
+       arm tips and its point runs down the V's throat, so the two shapes read
+       as one mark. A ~17px purple channel separates them at every height,
+       which survives the reduction to 60x60. -->
+  <path d="M256 310 L207.5 226 A56 56 0 1 1 304.5 226 Z" fill="#A3E635"/>
+  <circle cx="256" cy="198" r="24" fill="url(#bg)"/>
 </svg>
