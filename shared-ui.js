@@ -229,7 +229,7 @@ const SharedUI = (() => {
       }
       const options = f.options.map(opt => {
         const selected = obData[f.key] === opt ? ' selected' : '';
-        return `<div class="ob-option${selected}" data-key="${f.key}" data-value="${opt}">${Velocity.capitalize(opt)}</div>`;
+        return `<div class="ob-option${selected}" data-key="${f.key}" data-value="${opt}">${Velocity.capitalize(opt).replace(/_/g, ' ')}</div>`;
       }).join('');
       return `<div class="ob-step-sub" style="margin:14px 0 6px;font-weight:700;color:var(--text);">${f.label}</div><div class="ob-options">${options}</div>`;
     }).join('');

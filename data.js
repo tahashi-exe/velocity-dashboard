@@ -176,6 +176,17 @@ const Velocity = (() => {
   }
   function savePrefs(data) { localStorage.setItem(PREFS_KEY, JSON.stringify(data)); }
 
+  // "Match my prefs" filter — the one thing onboarding's answers actually
+  // drive today. Each field only constrains the match if the user answered
+  // it (an unset field never excludes a run).
+  function matchesPrefs(run, prefs) {
+    if (!prefs) return true;
+    if (prefs.type_key && run.type_key !== prefs.type_key) return false;
+    if (prefs.surface && run.details.surface && run.details.surface !== prefs.surface) return false;
+    if (prefs.wantsFreebies === 'Yes' && !run.freebies) return false;
+    return true;
+  }
+
   /* ---------- .ics export (PRD.md §4.10 — per-event download) ---------- */
 
   function nextOccurrence(run, now) {
@@ -260,7 +271,7 @@ const Velocity = (() => {
   return {
     DAYS, WEEK_MIN, MONTH_MIN, CATEGORIES,
     loadRuns, typeInfo, typeLabel, pinVisual, statusOf, scheduleLabel, withinScope,
-    getRsvp, setRsvp, getPrefs, savePrefs,
+    getRsvp, setRsvp, getPrefs, savePrefs, matchesPrefs,
     icsForRun, downloadICS, nextOccurrence,
     capitalize, formatTime, formatMinutes, parseDateOnly, formatDate, haversineKm, slug,
   };

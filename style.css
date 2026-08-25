@@ -946,6 +946,15 @@ button:active, .rsvp-btn:active, .scope-btn:active {
 .rsvp-btn.rsvp-not_interested.active, .rsvp-btn.rsvp-not_going.active { background: var(--text-muted); border-color: var(--text-muted); color: white; }
 
 /* ---------- Variant A: sheet title ---------- */
+.sheet-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px 8px;
+  flex-shrink: 0;
+}
+.sheet-title-row .sheet-title { padding: 0; }
 .sheet-title {
   padding: 0 20px 8px;
   font-weight: 700;
@@ -955,6 +964,21 @@ button:active, .rsvp-btn:active, .scope-btn:active {
   letter-spacing: 0.04em;
   flex-shrink: 0;
 }
+
+.prefs-chip {
+  flex-shrink: 0;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.prefs-chip.active { background: var(--lime); border-color: var(--lime); color: var(--purple-dark); }
 
 /* Type filter chips — shared by Variant A's sheet and Variant C's feed */
 .list-filter-row {

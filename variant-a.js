@@ -7,7 +7,7 @@
 const EXPLORE_LOCKED = ['Yoga', 'Pilates', 'Badminton', 'Padel', 'Cycling'];
 
 const VariantA = (() => {
-  let runs = [], map, markers = [], scope = 'week', typeFilter = 'all';
+  let runs = [], map, markers = [], scope = 'week', typeFilter = 'all', matchPrefs = false;
   let runNowPool = [], runNowUsingSoon = false, runNowUserLoc = null, runNowSortMode = 'time';
 
   function mount() {
@@ -39,7 +39,10 @@ const VariantA = (() => {
 
       <section id="list-sheet" class="list-sheet">
         <div id="sheet-handle" class="sheet-handle"><span class="handle-bar"></span></div>
-        <div class="sheet-title">All runs</div>
+        <div class="sheet-title-row">
+          <div class="sheet-title">All runs</div>
+          <button type="button" id="prefs-filter-btn" class="prefs-chip${matchPrefs ? ' active' : ''}">Match my prefs</button>
+        </div>
         <div id="type-filter-row" class="list-filter-row">${SharedUI.typeFilterChipsHtml(typeFilter)}</div>
         <div id="list-content" class="list-content"></div>
       </section>
@@ -67,6 +70,21 @@ const VariantA = (() => {
     SharedUI.initLanding(() => {});
 
     SharedUI.wireTypeFilter(document.getElementById('type-filter-row'), (key) => { typeFilter = key; render(); });
+
+    const prefsBtn = document.getElementById('prefs-filter-btn');
+    prefsBtn.addEventListener('click', () => {
+      if (!Velocity.getPrefs()) {
+        SharedUI.openOnboarding({}, () => {
+          matchPrefs = !!Velocity.getPrefs();
+          prefsBtn.classList.toggle('active', matchPrefs);
+          render();
+        });
+        return;
+      }
+      matchPrefs = !matchPrefs;
+      prefsBtn.classList.toggle('active', matchPrefs);
+      render();
+    });
 
     document.querySelectorAll('.scope-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -133,10 +151,12 @@ const VariantA = (() => {
 
   function inScope() {
     const now = new Date();
+    const prefs = Velocity.getPrefs();
     return runs
       .map(r => ({ r, status: Velocity.statusOf(r, now) }))
       .filter(x => Velocity.withinScope(x.status, x.r, scope))
       .filter(x => typeFilter === 'all' || x.r.type_key === typeFilter)
+      .filter(x => !matchPrefs || Velocity.matchesPrefs(x.r, prefs))
       .sort((a, b) => a.status.minutesDiff - b.status.minutesDiff);
   }
 
@@ -157,7 +177,7 @@ const VariantA = (() => {
           </div>
         </div>
       `;
-    }).join('') || '<div class="empty-state"><p>Nothing in this window.</p></div>';
+    }).join('') || `<div class="empty-state"><p>${matchPrefs ? 'Nothing matches your prefs in this window.' : 'Nothing in this window.'}</p></div>`;
 
     document.querySelectorAll('#list-content .list-row').forEach(row => {
       row.addEventListener('click', () => {
