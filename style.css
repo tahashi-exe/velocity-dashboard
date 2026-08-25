@@ -43,7 +43,7 @@ button:active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   z-index: 1000;
@@ -164,7 +164,7 @@ button:active {
   height: 100dvh;
   background: var(--surface);
   z-index: 2000;
-  padding: 28px 24px;
+  padding: 32px 28px;
   transition: transform 0.25s ease;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -223,7 +223,7 @@ button:active {
 
 .tag-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 20px;
 }
@@ -559,7 +559,7 @@ button:active {
 .modal-card {
   background: var(--surface);
   border-radius: 18px;
-  padding: 28px 26px;
+  padding: 32px 28px;
   width: 420px;
   max-width: 100%;
   max-height: 88vh;
@@ -693,7 +693,7 @@ button:active {
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -6px 24px rgba(0,0,0,0.15);
   z-index: 900;
-  transform: translateY(calc(100% - 96px));
+  transform: translateY(calc(100% - 40px)); /* collapsed: just the drag handle — decluttered, and clears the corner switcher */
   transition: transform 0.25s ease;
   display: flex;
   flex-direction: column;
@@ -737,8 +737,8 @@ button:active {
 .list-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 0;
+  gap: 14px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
@@ -832,7 +832,7 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid rgba(231, 233, 222, 0.6);
-  gap: 12px;
+  gap: 16px;
 }
 
 /* Scope toggle (This Week / This Month) */
@@ -840,7 +840,7 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
   display: flex;
   background: var(--purple-tint);
   border-radius: 999px;
-  padding: 3px;
+  padding: 4px;
   gap: 2px;
 }
 .scope-btn {
@@ -873,7 +873,7 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
 .club-marker.has-ring {
   box-shadow: 0 0 0 3px var(--lime), 0 2px 8px rgba(0,0,0,0.25);
 }
-.cal-dot.has-ring, .legend-dot.has-ring {
+.cal-chip-dot.has-ring, .legend-dot.has-ring {
   box-shadow: 0 0 0 2px var(--lime);
 }
 
@@ -913,7 +913,7 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
   font-family: inherit;
 }
 
-.rsvp-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.rsvp-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .rsvp-btn {
   flex: 1 1 auto;
   min-width: 84px;
@@ -931,37 +931,49 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
 .rsvp-btn.rsvp-interested.active { background: var(--lime); border-color: var(--lime); color: var(--purple-dark); }
 .rsvp-btn.rsvp-not_interested.active, .rsvp-btn.rsvp-not_going.active { background: var(--text-muted); border-color: var(--text-muted); color: white; }
 
-/* Variant switcher (prototype-only chrome) */
+/* Variant switcher (prototype-only chrome) — quiet corner tab, hidden until
+   past the landing page so it doesn't read as part of the product itself. */
 .variant-switcher {
   position: fixed;
-  bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 14px;
+  left: 14px;
   z-index: 7000;
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(31, 27, 46, 0.85);
+  gap: 8px;
+  background: rgba(31, 27, 46, 0.78);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   color: white;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 999px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  font-size: 11px;
   font-weight: 700;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
 }
+.variant-switcher.visible {
+  opacity: 0.55;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.variant-switcher.visible:hover { opacity: 1; }
 .switcher-arrow {
-  width: 30px; height: 30px;
+  width: 22px; height: 22px;
   border-radius: 50%;
   border: none;
   background: rgba(255,255,255,0.15);
   color: white;
-  font-size: 15px;
+  font-size: 12px;
   cursor: pointer;
 }
 .switcher-arrow:hover { background: rgba(255,255,255,0.28); }
-.switcher-label { padding: 0 4px; white-space: nowrap; }
+.switcher-label { padding: 0 2px; white-space: nowrap; }
 
 /* ---------- Variant A: sheet title ---------- */
 .sheet-title {
@@ -973,6 +985,69 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
   letter-spacing: 0.04em;
   flex-shrink: 0;
 }
+
+/* Type filter chips — shared by Variant A's sheet and Variant C's feed */
+.list-filter-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 20px 14px;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+.type-chip {
+  flex-shrink: 0;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.type-chip.active { background: var(--purple); border-color: var(--purple); color: white; }
+
+/* "More" menu — folds Calendar + Profile behind one icon in Variant A's
+   topbar, so the primary row reads as Brand / Scope / Run Now, not five
+   competing clusters. */
+.more-wrap { position: relative; }
+.more-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  min-width: 160px;
+  z-index: 3000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+}
+.more-menu.open { opacity: 1; visibility: visible; transform: translateY(0); }
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.more-menu-item:hover { background: var(--purple-tint); }
 
 /* ---------- Variant B: Weekly Planner ---------- */
 .planner-main {
@@ -998,43 +1073,66 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
 .day-chip-label { font-size: 11px; font-weight: 700; color: var(--text-muted); }
 .day-chip-today .day-chip-label { color: var(--purple-dark); }
 
-.cal-grid-week { display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); gap: 10px; overflow-x: auto; }
-.cal-grid-month { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); gap: 10px; overflow-x: auto; }
-.cal-day {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 10px;
-  min-height: 130px;
+/* Calendar: vertically stacked day bands (per calendar.webp), a rotating
+   per-weekday pastel palette applied inline per band (Calendar.DAY_PALETTE
+   in calendar.js), big bold date numerals, dark pill-chip events. */
+.cal-stack { display: flex; flex-direction: column; gap: 14px; }
+
+.cal-band {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 22px 24px;
+  border-radius: 22px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
-.cal-day-today { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple); }
-.cal-day-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-.cal-day-name { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
-.cal-day-num { font-size: 15px; font-weight: 700; color: var(--purple-dark); }
-.cal-day-empty { font-size: 12px; color: var(--text-muted); padding: 6px 0; }
-.cal-card {
+.cal-band-today { box-shadow: 0 0 0 2px rgba(0,0,0,0.18); }
+.cal-band-date { display: flex; flex-direction: column; flex-shrink: 0; width: 62px; }
+.cal-band-dayname { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; opacity: 0.75; }
+.cal-band-num { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.cal-band-chips { display: flex; flex-wrap: wrap; gap: 10px; flex: 1; align-content: flex-start; }
+
+.cal-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
+  gap: 8px;
   border: none;
-  background: var(--bg);
-  border-radius: 8px;
-  padding: 6px 8px;
+  background: #1F1B2E;
+  color: white;
+  border-radius: 999px;
+  padding: 10px 16px;
   font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
   cursor: pointer;
-  text-align: left;
 }
-.cal-card-highlight { background: var(--lime-tint); box-shadow: inset 2px 0 0 var(--lime-dark); }
-.cal-card-name { font-size: 11px; font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cal-card-time { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
-.cal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.cal-dot.color-red { background: #DC2626; }
-.cal-dot.color-black { background: #111111; }
-.cal-dot.color-white { background: #FFFFFF; border: 1px solid #6B7280; }
+.cal-chip-highlight { box-shadow: 0 0 0 2px var(--lime); }
+.cal-chip-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-chip-time { opacity: 0.65; font-weight: 400; flex-shrink: 0; }
+.cal-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cal-chip-dot.color-red { background: #DC2626; }
+.cal-chip-dot.color-black { background: #6B7280; }
+.cal-chip-dot.color-white { background: #FFFFFF; }
+
+.cal-band-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 24px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+.cal-band-empty-date { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.04em; width: 62px; flex-shrink: 0; }
+.cal-band-empty-text { font-size: 13px; color: var(--text-muted); }
+
+/* Compact: Variant A's narrow side-panel host — chips stack single-column
+   instead of wrapping into a wide multi-chip row. */
+.cal-stack-compact .cal-band { flex-direction: column; gap: 12px; padding: 16px 18px; }
+.cal-stack-compact .cal-band-date { flex-direction: row; align-items: baseline; gap: 8px; width: auto; }
+.cal-stack-compact .cal-band-num { font-size: 26px; }
+.cal-stack-compact .cal-band-chips { flex-direction: column; width: 100%; }
+.cal-stack-compact .cal-chip { width: 100%; }
+.cal-stack-compact .cal-chip-name { max-width: none; flex: 1; }
 
 .fab {
   position: fixed;
@@ -1097,9 +1195,16 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
 .feed-pane {
   width: 420px;
   max-width: 100%;
-  overflow-y: auto;
-  padding: 16px 16px 100px;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
+}
+.feed-header { flex-shrink: 0; padding-top: 14px; border-bottom: 1px solid var(--border); }
+.feed-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px 100px;
 }
 .map-pane { flex: 1; position: relative; }
 
@@ -1107,8 +1212,8 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
   cursor: pointer;
 }
 .feed-card-name { font-size: 16px; font-weight: 700; color: var(--purple-dark); margin: 4px 0 2px; }
@@ -1132,7 +1237,9 @@ button:active, .rsvp-btn:active, .scope-btn:active, .chip-toggle:active, .fab:ac
   .split-main.show-map .feed-pane { display: none; }
   .feed-pane { width: 100%; }
   .planner-main { padding: 16px 12px 100px; }
-  .cal-grid-week, .cal-grid-month { grid-template-columns: repeat(3, minmax(100px, 1fr)); }
+  .cal-band { flex-direction: column; gap: 12px; padding: 18px 20px; }
+  .cal-band-date { flex-direction: row; align-items: baseline; gap: 8px; width: auto; }
+  .cal-band-num { font-size: 30px; }
 }
 
 @media (max-width: 480px) {

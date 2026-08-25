@@ -1,11 +1,26 @@
 /* ---------- v2 prototype: calendar grid ----------
    PRD.md §4.9 — day boxes showing runs per day. Shared by Variant A (behind
-   a toggle) and Variant B (the primary view), since the two variants differ
-   in *where this lives*, not in what a day cell contains.
+   a toggle, narrow side panel — rendered "compact") and Variant B (the
+   primary view, full width). Redesigned per calendar.webp: vertically
+   stacked day bands in a deterministic per-weekday pastel palette, big bold
+   date numerals, and runs as dark pill chips — replacing the earlier
+   horizontal grid of small bordered tiles.
    Recurring runs render on every matching weekday in the visible range —
    the concrete expression of "permanent weekly slot" (PRD.md §4.6). */
 
 const Calendar = (() => {
+  // One fixed color per weekday (not random) so the palette reads as a
+  // designed system across weeks, matching the reference image's approach.
+  const DAY_PALETTE = [
+    { bg: '#F3EFD9', text: '#7A6A1D' }, // sunday — sand
+    { bg: '#E7E1FB', text: '#4C3B9E' }, // monday — lavender
+    { bg: '#F7DEE3', text: '#9C3B57' }, // tuesday — dusty rose
+    { bg: '#DCEFE8', text: '#1F6B57' }, // wednesday — sage
+    { bg: '#DCE6FA', text: '#33518E' }, // thursday — periwinkle
+    { bg: '#FBE7D3', text: '#9C5A1F' }, // friday — apricot
+    { bg: '#DFF2E1', text: '#2C7A3D' }, // saturday — mint
+  ];
+
   function dateKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
   function visibleDays(scope) {
@@ -28,43 +43,56 @@ const Calendar = (() => {
     });
   }
 
-  function miniCardHtml(run) {
+  function chipHtml(run) {
     const visual = Velocity.pinVisual(run);
     const rsvp = Velocity.getRsvp(run.id);
     const highlighted = rsvp === 'going' || rsvp === 'interested';
     return `
-      <button type="button" class="cal-card${highlighted ? ' cal-card-highlight' : ''}" data-run-id="${run.id}">
-        <span class="cal-dot color-${visual.base}${visual.ring ? ' has-ring' : ''}"></span>
-        <span class="cal-card-name">${run.name}</span>
-        <span class="cal-card-time">${Velocity.formatTime(run.time)}</span>
+      <button type="button" class="cal-chip${highlighted ? ' cal-chip-highlight' : ''}" data-run-id="${run.id}">
+        <span class="cal-chip-dot color-${visual.base}${visual.ring ? ' has-ring' : ''}"></span>
+        <span class="cal-chip-name">${run.name}</span>
+        <span class="cal-chip-time">${Velocity.formatTime(run.time)}</span>
       </button>
     `;
   }
 
-  // Returns a DOM node: a scrollable row of day columns (week) or a wrapped
-  // grid of week-rows (month) — a rolling N-day window either way, not a
-  // Jan/Feb calendar-month grid, to match the This Week/Month scope filter.
-  function buildGrid(runs, scope, onSelectRun) {
-    const days = visibleDays(scope);
-    const el = document.createElement('div');
-    el.className = `cal-grid cal-grid-${scope}`;
-    el.innerHTML = days.map(day => {
-      const dayRuns = runsForDay(runs, day);
-      const isToday = dateKey(day) === dateKey(new Date());
+  function bandHtml(day, dayRuns, compact) {
+    const pal = DAY_PALETTE[day.getDay()];
+    const isToday = dateKey(day) === dateKey(new Date());
+    const dayName = day.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
+
+    if (!dayRuns.length) {
       return `
-        <div class="cal-day${isToday ? ' cal-day-today' : ''}">
-          <div class="cal-day-header">
-            <span class="cal-day-name">${day.toLocaleDateString('en-GB', { weekday: 'short' })}</span>
-            <span class="cal-day-num">${day.getDate()}</span>
-          </div>
-          <div class="cal-day-body">
-            ${dayRuns.length ? dayRuns.map(miniCardHtml).join('') : '<div class="cal-day-empty">—</div>'}
-          </div>
+        <div class="cal-band cal-band-empty${isToday ? ' cal-band-today' : ''}">
+          <span class="cal-band-empty-date">${dayName} ${day.getDate()}</span>
+          <span class="cal-band-empty-text">No runs</span>
         </div>
       `;
-    }).join('');
+    }
 
-    el.querySelectorAll('.cal-card').forEach(btn => {
+    return `
+      <div class="cal-band${compact ? ' cal-band-compact' : ''}${isToday ? ' cal-band-today' : ''}" style="background:${pal.bg};color:${pal.text}">
+        <div class="cal-band-date">
+          <span class="cal-band-dayname">${dayName}</span>
+          <span class="cal-band-num">${day.getDate()}</span>
+        </div>
+        <div class="cal-band-chips">
+          ${dayRuns.map(chipHtml).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // Returns a DOM node: vertically stacked day bands over a rolling N-day
+  // window (not a Jan/Feb calendar-month grid) to match the This Week/Month
+  // scope filter. `compact` narrows the layout for Variant A's side panel.
+  function buildGrid(runs, scope, onSelectRun, compact) {
+    const days = visibleDays(scope);
+    const el = document.createElement('div');
+    el.className = `cal-stack${compact ? ' cal-stack-compact' : ''}`;
+    el.innerHTML = days.map(day => bandHtml(day, runsForDay(runs, day), compact)).join('');
+
+    el.querySelectorAll('.cal-chip').forEach(btn => {
       btn.addEventListener('click', () => {
         const run = runs.find(r => r.id === btn.dataset.runId);
         if (run) onSelectRun(run);
@@ -80,12 +108,16 @@ const Calendar = (() => {
     const max = Math.max(1, ...counts);
     const el = document.createElement('div');
     el.className = 'week-rail';
-    el.innerHTML = days.map((d, i) => `
-      <div class="day-chip${dateKey(d) === dateKey(new Date()) ? ' day-chip-today' : ''}">
-        <div class="day-chip-bar" style="height:${8 + (counts[i] / max) * 28}px"></div>
-        <div class="day-chip-label">${d.toLocaleDateString('en-GB', { weekday: 'narrow' })}</div>
-      </div>
-    `).join('');
+    el.innerHTML = days.map((d, i) => {
+      const pal = DAY_PALETTE[d.getDay()];
+      const isToday = dateKey(d) === dateKey(new Date());
+      return `
+        <div class="day-chip${isToday ? ' day-chip-today' : ''}">
+          <div class="day-chip-bar" style="height:${8 + (counts[i] / max) * 28}px;background:${isToday ? pal.text : pal.bg}"></div>
+          <div class="day-chip-label">${d.toLocaleDateString('en-GB', { weekday: 'narrow' })}</div>
+        </div>
+      `;
+    }).join('');
     return el;
   }
 

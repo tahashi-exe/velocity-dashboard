@@ -4,7 +4,7 @@
    both one tap away but secondary. */
 
 const VariantA = (() => {
-  let runs = [], map, markers = [], scope = 'week';
+  let runs = [], map, markers = [], scope = 'week', typeFilter = 'all';
 
   function mount() {
     const root = document.getElementById('app-root');
@@ -19,9 +19,14 @@ const VariantA = (() => {
           <button type="button" class="scope-btn" data-scope="month">This Month</button>
         </div>
         <div class="topbar-actions">
-          <button type="button" class="icon-btn" id="cal-btn" aria-label="Calendar">&#128197;</button>
           <button type="button" class="run-now-btn" id="run-now-btn"><span class="run-now-dot"></span>Run Now</button>
-          <button type="button" class="icon-btn" id="profile-btn" aria-label="Profile">&#128100;</button>
+          <div class="more-wrap">
+            <button type="button" class="icon-btn" id="more-btn" aria-label="More" aria-expanded="false">&#8942;</button>
+            <div class="more-menu" id="more-menu">
+              <button type="button" class="more-menu-item" id="cal-btn">&#128197; Calendar</button>
+              <button type="button" class="more-menu-item" id="profile-btn">&#128100; Profile</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -29,7 +34,8 @@ const VariantA = (() => {
 
       <section id="list-sheet" class="list-sheet">
         <div id="sheet-handle" class="sheet-handle"><span class="handle-bar"></span></div>
-        <div class="sheet-title">Every run in scope</div>
+        <div class="sheet-title">All runs</div>
+        <div id="type-filter-row" class="list-filter-row">${SharedUI.typeFilterChipsHtml(typeFilter)}</div>
         <div id="list-content" class="list-content"></div>
       </section>
 
@@ -43,12 +49,28 @@ const VariantA = (() => {
     map = MapHelper.createMap('map-a');
     SharedUI.initLanding(() => {});
 
+    SharedUI.wireTypeFilter(document.getElementById('type-filter-row'), (key) => { typeFilter = key; render(); });
+
     document.querySelectorAll('.scope-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         scope = btn.dataset.scope;
         document.querySelectorAll('.scope-btn').forEach(b => b.classList.toggle('active', b === btn));
         render();
       });
+    });
+
+    const moreBtn = document.getElementById('more-btn');
+    const moreMenu = document.getElementById('more-menu');
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = moreMenu.classList.toggle('open');
+      moreBtn.setAttribute('aria-expanded', String(isOpen));
+    });
+    document.addEventListener('click', (e) => {
+      if (!moreMenu.classList.contains('open')) return;
+      if (e.target === moreBtn || moreMenu.contains(e.target)) return;
+      moreMenu.classList.remove('open');
+      moreBtn.setAttribute('aria-expanded', 'false');
     });
 
     const sheet = document.getElementById('list-sheet');
@@ -64,13 +86,17 @@ const VariantA = (() => {
     });
 
     document.getElementById('cal-btn').addEventListener('click', () => {
+      moreMenu.classList.remove('open');
       document.getElementById('cal-panel-body').innerHTML = '';
-      document.getElementById('cal-panel-body').appendChild(Calendar.buildGrid(inScope().map(x => x.r), scope, SharedUI.openRunDetail));
+      document.getElementById('cal-panel-body').appendChild(Calendar.buildGrid(runs, scope, SharedUI.openRunDetail, true));
       SharedUI.openPanel(document.getElementById('cal-panel'));
     });
     document.getElementById('cal-panel-close').addEventListener('click', SharedUI.closeAllPanels);
 
-    document.getElementById('profile-btn').addEventListener('click', () => SharedUI.openOnboarding(Velocity.getPrefs() || {}));
+    document.getElementById('profile-btn').addEventListener('click', () => {
+      moreMenu.classList.remove('open');
+      SharedUI.openOnboarding(Velocity.getPrefs() || {});
+    });
     document.getElementById('run-now-btn').addEventListener('click', handleRunNow);
     document.addEventListener('velocity:prefs-changed', render);
 
@@ -82,6 +108,7 @@ const VariantA = (() => {
     return runs
       .map(r => ({ r, status: Velocity.statusOf(r, now) }))
       .filter(x => Velocity.withinScope(x.status, x.r, scope))
+      .filter(x => typeFilter === 'all' || x.r.type_key === typeFilter)
       .sort((a, b) => a.status.minutesDiff - b.status.minutesDiff);
   }
 

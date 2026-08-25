@@ -38,7 +38,14 @@ const SharedUI = (() => {
     toast._t = setTimeout(() => el.classList.remove('show'), 2200);
   }
 
-  function openPanel(panel) { panel.classList.add('open'); overlay.classList.add('open'); }
+  // Closes any other open panel first — without this, opening one panel
+  // (e.g. the calendar) while another is already open (e.g. a run detail)
+  // leaves both stacked on screen at once, squeezing whatever's behind them.
+  function openPanel(panel) {
+    document.querySelectorAll('.panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+    panel.classList.add('open');
+    overlay.classList.add('open');
+  }
   function closeAllPanels() {
     document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
     overlay.classList.remove('open');
@@ -261,10 +268,27 @@ const SharedUI = (() => {
     });
   }
 
+  /* ---------- type filter chips (shared by Variant A's sheet + Variant C's feed) ---------- */
+
+  function typeFilterChipsHtml(active) {
+    const options = [{ key: 'all', label: 'All' }, ...Velocity.CATEGORIES.running.types];
+    return options.map(o => `<button type="button" class="type-chip${active === o.key ? ' active' : ''}" data-type="${o.key}">${o.label}</button>`).join('');
+  }
+
+  function wireTypeFilter(container, onChange) {
+    container.querySelectorAll('.type-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('.type-chip').forEach(b => b.classList.toggle('active', b === btn));
+        onChange(btn.dataset.type);
+      });
+    });
+  }
+
   function initLanding(onEnter) {
     document.getElementById('lets-run-btn').addEventListener('click', () => {
       landingPage.classList.add('hidden');
       LandingMap.destroy();
+      document.getElementById('variant-switcher').classList.add('visible');
       if (!Velocity.getPrefs()) {
         openOnboarding({}, () => maybeShowInstallTutorial(onEnter));
       } else {
@@ -273,5 +297,5 @@ const SharedUI = (() => {
     });
   }
 
-  return { toast, openPanel, closeAllPanels, openRunDetail, openOnboarding, initLanding };
+  return { toast, openPanel, closeAllPanels, openRunDetail, openOnboarding, initLanding, typeFilterChipsHtml, wireTypeFilter };
 })();

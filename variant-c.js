@@ -5,7 +5,7 @@
    screens, tab-switched on mobile. */
 
 const VariantC = (() => {
-  let runs = [], scope = 'week', nowOnly = false, map, markers = [], mobileView = 'feed';
+  let runs = [], scope = 'week', nowOnly = false, typeFilter = 'all', map, markers = [], mobileView = 'feed';
 
   function mount() {
     const root = document.getElementById('app-root');
@@ -31,13 +31,21 @@ const VariantC = (() => {
       </div>
 
       <main class="split-main">
-        <section id="feed-pane" class="feed-pane"></section>
+        <section id="feed-pane" class="feed-pane">
+          <div class="feed-header">
+            <div class="sheet-title">All runs</div>
+            <div id="type-filter-row" class="list-filter-row">${SharedUI.typeFilterChipsHtml(typeFilter)}</div>
+          </div>
+          <div id="feed-list" class="feed-list"></div>
+        </section>
         <section id="map-pane" class="map-pane"><div id="map-c" class="map-surface"></div></section>
       </main>
     `;
 
     SharedUI.initLanding(() => {});
     map = MapHelper.createMap('map-c');
+
+    SharedUI.wireTypeFilter(document.getElementById('type-filter-row'), (key) => { typeFilter = key; render(); });
 
     document.querySelectorAll('.scope-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -71,7 +79,8 @@ const VariantC = (() => {
     const now = new Date();
     let items = runs
       .map(r => ({ r, status: Velocity.statusOf(r, now) }))
-      .filter(x => Velocity.withinScope(x.status, x.r, scope));
+      .filter(x => Velocity.withinScope(x.status, x.r, scope))
+      .filter(x => typeFilter === 'all' || x.r.type_key === typeFilter);
     if (nowOnly) items = items.filter(x => x.status.phase === 'soon');
     return items.sort((a, b) => a.status.minutesDiff - b.status.minutesDiff);
   }
@@ -105,7 +114,7 @@ const VariantC = (() => {
   function render() {
     const items = inScope();
 
-    document.getElementById('feed-pane').innerHTML = items.length
+    document.getElementById('feed-list').innerHTML = items.length
       ? items.map(({ r, status }) => cardHtml(r, status)).join('')
       : '<div class="empty-state"><p>Nothing matches right now.</p></div>';
 
