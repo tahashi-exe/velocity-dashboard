@@ -1,4 +1,14 @@
 :root {
+  /* Display: Bricolage Grotesque — a grotesque with fluid, slightly
+     irregular rhythm in its letterforms, used with restraint on the
+     wordmark, hero, section titles, and the calendar's big date numerals.
+     Body/UI: Plus Jakarta Sans — geometric-humanist with rounded
+     terminals, reads fast at small sizes without competing with the
+     display face. Neither is the generic go-to for a "friendly SaaS UI"
+     (that's usually just Inter everywhere), and both carry real energy
+     for a running app without tipping into a script/italic cliché. */
+  --font-display: 'Bricolage Grotesque', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-body: 'Plus Jakarta Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --bg: #FAFBF6;
   --surface: #FFFFFF;
   --purple: #6D28D9;
@@ -21,11 +31,25 @@ html, body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
   font-weight: 700;
   background: var(--bg);
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Display face — headlines, brand, section titles, and the calendar's big
+   date numerals only. Everything else (buttons, chips, list rows, data)
+   stays on the body face for legibility at UI sizes. */
+.landing-title,
+.brand-name,
+.run-title,
+.runnow-header,
+.install-title,
+.ob-step-title,
+.cal-band-num {
+  font-family: var(--font-display);
+  font-weight: 800;
 }
 
 button {
