@@ -2,13 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#6D28D9" />
 <title>VelocityAE — Find your next run</title>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+<!-- Prototype notice: this branch is throwaway per the mattpocock/skills
+     "prototype" skill — three structural UI variants switchable below,
+     nothing here is meant to merge to main as-is. -->
 
 <!-- Landing page -->
 <div id="landing-page">
@@ -28,61 +39,35 @@
   </div>
 </div>
 
-<header class="topbar">
-  <div class="brand">
-    <div class="legend-wrap">
-      <button id="legend-btn" class="legend-flag-btn" aria-label="Pin color legend" aria-expanded="false">🇦🇪</button>
-      <div id="legend-popover" class="legend-popover" role="tooltip">
-        <div class="legend-popover-title">Pin colors</div>
-        <div class="legend-popover-item"><span class="legend-dot black"></span>One-off event</div>
-        <div class="legend-popover-item"><span class="legend-dot green"></span>Freebies</div>
-        <div class="legend-popover-item"><span class="legend-dot red"></span>Training</div>
-        <div class="legend-popover-item"><span class="legend-dot white"></span>Regular club run</div>
-      </div>
-    </div>
-    <span class="brand-mark">V</span>
-    <span class="brand-name">Velocity</span>
-  </div>
-  <div class="topbar-actions">
-    <button id="filters-btn" class="icon-btn" aria-label="Filters">☰</button>
-    <button id="run-now-btn" class="run-now-btn">
-      <span class="run-now-dot"></span>
-      Run Now
-    </button>
-    <button id="profile-btn" class="icon-btn profile-btn" aria-label="Profile">👤</button>
-  </div>
-</header>
-
-<main id="map"></main>
-
-<!-- List / Map bottom sheet -->
-<section id="list-sheet" class="list-sheet">
-  <div id="sheet-handle" class="sheet-handle"><span class="handle-bar"></span></div>
-  <div id="this-week-banner" class="this-week-banner"></div>
-  <div id="list-content" class="list-content"></div>
-</section>
-
-<!-- Club/event detail panel -->
-<aside id="club-panel" class="panel panel-left" aria-hidden="true">
-  <button id="close-panel" class="panel-close" aria-label="Close">&times;</button>
-  <div id="club-panel-content"></div>
-</aside>
-
-<!-- Run Now results panel -->
-<aside id="runnow-panel" class="panel panel-left" aria-hidden="true">
-  <button id="close-runnow" class="panel-close" aria-label="Close">&times;</button>
-  <div id="runnow-content"></div>
-</aside>
-
-<!-- Filters panel -->
-<aside id="filters-panel" class="panel panel-right" aria-hidden="true">
-  <button id="close-filters" class="panel-close" aria-label="Close">&times;</button>
-  <div id="filters-content"></div>
+<!-- Shared run detail panel (PRD.md §4.5 card hierarchy) -->
+<aside id="run-panel" class="panel panel-left" aria-hidden="true">
+  <button id="run-panel-close" class="panel-close" aria-label="Close">&times;</button>
+  <div id="run-panel-content"></div>
 </aside>
 
 <div id="overlay" class="overlay"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="script.js"></script>
+<!-- Each variant renders its own topbar/layout into here -->
+<main id="app-root"></main>
+
+<!-- Prototype-only: variant switcher, per prototype skill UI.md -->
+<div id="variant-switcher" class="variant-switcher"></div>
+
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="data.js"></script>
+<script src="calendar.js"></script>
+<script src="map-helpers.js"></script>
+<script src="shared-ui.js"></script>
+<script src="variant-a.js"></script>
+<script src="variant-b.js"></script>
+<script src="variant-c.js"></script>
+<script src="switcher.js"></script>
+<script>
+  mountSwitcher();
+  mountVariant();
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
 </body>
 </html>
