@@ -49,19 +49,49 @@ const SharedUI = (() => {
   function closeAllPanels() {
     document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
     overlay.classList.remove('open');
+    stopPhotoSlideshow();
   }
   overlay.addEventListener('click', closeAllPanels);
   document.getElementById('run-panel-close').addEventListener('click', closeAllPanels);
 
+  // Photo slideshow (run detail panel) — crossfades between a club's photos,
+  // one at a time. A single timer is enough since only one run panel is ever
+  // open; stopPhotoSlideshow() is called before every re-render and on panel
+  // close so a stale interval never outlives the DOM nodes it points at.
+  let slideshowTimer = null;
+  function stopPhotoSlideshow() {
+    if (slideshowTimer) { clearInterval(slideshowTimer); slideshowTimer = null; }
+  }
+  function startPhotoSlideshow(container) {
+    const photos = container.querySelectorAll('.run-photo');
+    if (photos.length < 2) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let index = 0;
+    slideshowTimer = setInterval(() => {
+      photos[index].classList.remove('active');
+      index = (index + 1) % photos.length;
+      photos[index].classList.add('active');
+    }, 3500);
+  }
+  function escapeAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
+
   // PRD.md §4.5 order: kind badge -> type -> schedule -> register here ->
   // RSVP -> freebies. location/notes/last_updated stay as supporting info.
   function openRunDetail(run) {
+    stopPhotoSlideshow();
     const now = new Date();
     const status = Velocity.statusOf(run, now);
     const visual = Velocity.pinVisual(run);
     const currentRsvp = Velocity.getRsvp(run.id);
+    const photos = run.photos || [];
 
     runPanelContent.innerHTML = `
+      ${photos.length ? `
+      <div class="run-photos" id="run-photos">
+        ${photos.map((src, i) => `<img class="run-photo${i === 0 ? ' active' : ''}" src="${escapeAttr(src)}" alt="${escapeAttr(run.name)} photo ${i + 1}" loading="lazy">`).join('')}
+      </div>` : ''}
       <div class="tag-row">
         <span class="tag kind-${run.kind}">${run.kind === 'one_off' ? 'One-off' : 'Recurring'}</span>
         <span class="tag">${Velocity.typeLabel(run)}</span>
@@ -81,6 +111,7 @@ const SharedUI = (() => {
 
       <a class="register-btn" href="${run.register_link}" target="_blank" rel="noopener">Register here</a>
       <button type="button" class="ics-btn" id="ics-btn">Add to calendar</button>
+      <a class="ics-btn" href="https://www.google.com/maps/search/?api=1&query=${run.lat},${run.lng}" target="_blank" rel="noopener">Open in Maps</a>
 
       <div class="rsvp-row" role="group" aria-label="RSVP">
         ${RSVP_OPTIONS.map(o => `<button type="button" class="rsvp-btn rsvp-${o.key}${currentRsvp === o.key ? ' active' : ''}" data-status="${o.key}">${o.label}</button>`).join('')}
@@ -103,6 +134,7 @@ const SharedUI = (() => {
     });
 
     openPanel(runPanel);
+    if (photos.length) startPhotoSlideshow(document.getElementById('run-photos'));
   }
 
   /* ---------- install-to-homescreen tutorial ----------

@@ -70,7 +70,8 @@ The JSON files keep their original v1 field names on disk; `data.js`'s
   "surface": "track | beach | road | indoor",
   "freebies": true,
   "day": "monday..sunday (lowercase)", "time": "HH:MM (24h)",
-  "link": "url", "notes": "string", "last_updated": "YYYY-MM-DD"
+  "link": "url", "photos": ["url", "url", "url"],
+  "notes": "string", "last_updated": "YYYY-MM-DD"
 }
 ```
 
@@ -84,6 +85,11 @@ Notes:
   `training` via `mapOldTypeToKey()` in `data.js`. Known keys pass through.
   `LFG` in `clubs.json` is still `"track"` and relies on this.
 - `surface` lives on the internal run as `details.surface`.
+- **`photos`** is optional — up to 3 image URLs. Missing/absent on older
+  records (normalized to `[]` in `data.js`'s `toRun()`), which just means no
+  slideshow renders. Filled in via the Telegram bot's "Photos" step or by
+  hand; the detail panel (`shared-ui.js`: `openRunDetail`) crossfades between
+  them on a timer when there are 2+.
 
 ⚠️ Hand-edits must stay valid JSON — one syntax error breaks the whole file.
 
@@ -149,6 +155,9 @@ the closest upcoming runs when nothing is in the `'soon'` window.
 - **RSVP** — Going / Interested / Not interested / Not going, per run, stored
   in `localStorage` (`velocity_rsvp_v2`). Not synced, deliberately.
 - **Add to calendar** — per-event `.ics` download (`data.js`: `downloadICS`).
+- **Open in Maps** — links straight to `google.com/maps/search/?api=1&query=lat,lng`
+  using the run's existing coordinates (no new field, no bot change needed).
+  Opens the native Google Maps app on a phone that has it, else the web map.
 
 Only one UI variant exists (`variant-a.js`). Two others and a switcher were
 prototyped and deliberately deleted once this one was chosen.
@@ -195,6 +204,8 @@ decision, not an oversight.
 - [x] RSVP + per-event `.ics` export (local only)
 - [x] PWA manifest, service worker, platform-aware install tutorial
 - [x] Telegram bot — guided question flow (no AI)
+- [x] Club photo slideshow (up to 3 photos, crossfade) — schema, panel
+      rendering, and the bot's guided flow / `/editclub` menu
 - [ ] Supabase backend, accounts/sign-in, synced RSVPs
 - [ ] Freebies page
 - [ ] Glowing GPX routes (pending GPX files from Taha)

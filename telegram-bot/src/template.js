@@ -120,6 +120,16 @@ const STEP_LINK = {
   field: { key: 'link', required: true, type: 'url' },
 }
 
+const STEP_PHOTOS = {
+  key: 'photos',
+  title: 'Photos',
+  kind: 'text',
+  optional: true,
+  prompt: 'Got photos for the map slideshow preview? Send up to 3 direct image links, one per line — '
+    + 'each has to start with https://.\nTap Skip if there are none.',
+  field: { key: 'photos', required: false, type: 'photoList' },
+}
+
 const STEP_NOTES = {
   key: 'notes',
   title: 'Notes',
@@ -130,13 +140,13 @@ const STEP_NOTES = {
 }
 
 const SHARED_HEAD = [STEP_NAME, STEP_LOCATION_NAME, STEP_LOCATION, STEP_TYPE, STEP_SURFACE, STEP_FREEBIES]
-const SHARED_TAIL = [STEP_TIME, STEP_LINK, STEP_NOTES]
+const SHARED_TAIL = [STEP_TIME, STEP_LINK, STEP_PHOTOS, STEP_NOTES]
 
 const CLUB_STEPS = [...SHARED_HEAD, STEP_DAY, ...SHARED_TAIL]
 const EVENT_STEPS = [...SHARED_HEAD, STEP_DATE, ...SHARED_TAIL]
 
-const CLUB_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'day', 'time', 'link', 'notes']
-const EVENT_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'date', 'time', 'link', 'notes']
+const CLUB_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'day', 'time', 'link', 'photos', 'notes']
+const EVENT_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'date', 'time', 'link', 'photos', 'notes']
 
 export function stepsFor(collection) {
   return collection === 'clubs' ? CLUB_STEPS : EVENT_STEPS
@@ -208,10 +218,22 @@ export async function resolveMapsLink(url) {
 /* ---------- validation ---------- */
 
 export function validateField(field, rawValue) {
-  const value = typeof rawValue === 'boolean' ? String(rawValue) : (rawValue || '').toString().trim()
+  // photoList round-trips as an array once answered (session.answers stores
+  // the parsed list) but arrives as raw multi-line text the first time —
+  // normalize both into the same newline-joined string before the rest of
+  // this function's string-based logic runs.
+  const normalizedRaw = Array.isArray(rawValue) ? rawValue.join('\n') : rawValue
+  const value = typeof normalizedRaw === 'boolean' ? String(normalizedRaw) : (normalizedRaw || '').toString().trim()
   if (!value) {
     if (field.required) return { error: 'missing' }
-    return { value: '' }
+    return { value: field.type === 'photoList' ? [] : '' }
+  }
+  if (field.type === 'photoList') {
+    const urls = value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 3)
+    if (urls.some((u) => !/^https?:\/\//i.test(u))) {
+      return { error: 'each photo must be a link starting with http:// or https://, one per line (max 3)' }
+    }
+    return { value: urls }
   }
   if (field.type === 'number') {
     const n = Number(value)
@@ -427,6 +449,7 @@ export function recordFrom(collection, answers) {
     if (key === 'notes') record[key] = value === undefined || value === null ? '' : String(value)
     else if (key === 'lat' || key === 'lng') record[key] = Number(value)
     else if (key === 'freebies') record[key] = value === true
+    else if (key === 'photos') record[key] = Array.isArray(value) ? value : []
     else record[key] = value === undefined || value === null ? '' : value
   }
   return record
@@ -438,6 +461,10 @@ export function displayValue(step, answers) {
     return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) ? `${lat}, ${lng}` : '—'
   }
   const value = answers[step.key]
+  if (step.field && step.field.type === 'photoList') {
+    const urls = Array.isArray(value) ? value : []
+    return urls.length ? `${urls.length} photo${urls.length > 1 ? 's' : ''}` : '(none)'
+  }
   if (value === undefined || value === null || value === '') return step.optional ? '(none)' : '—'
   if (step.kind === 'boolean') return value ? 'Yes' : 'No'
   if (step.options) {

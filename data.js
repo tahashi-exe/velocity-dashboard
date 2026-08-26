@@ -57,6 +57,7 @@ const Velocity = (() => {
       time: item.time,
       register_link: item.link,
       notes: item.notes || '',
+      photos: Array.isArray(item.photos) ? item.photos.filter(Boolean).slice(0, 3) : [],
       details: { surface: item.surface, pace: item.pace },
       last_updated: item.last_updated,
     };

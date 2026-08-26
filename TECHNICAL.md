@@ -54,6 +54,7 @@ Running's seed rows: `social`, `tempo`, `training` (`is_training_equivalent
 | `event_date` | date, nullable | set only when `kind = one_off` |
 | `time` | time (HH:MM, 24h) | |
 | `register_link` | url | labeled "Register here" in the UI |
+| `photos` | text[], nullable | up to 3 image URLs, shown as a crossfading slideshow in the detail panel |
 | `notes` | text | |
 | `details` | jsonb, nullable | category-specific extra fields that don't need their own column — e.g. running's `surface` (`track`/`beach`/`road`/`indoor`) lives here as `{"surface": "track"}` instead of a dedicated `surface` column, so a future category isn't stuck with an irrelevant `surface` field |
 | `last_updated` | date | |
