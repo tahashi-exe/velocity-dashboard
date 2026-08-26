@@ -55,7 +55,7 @@ Running's seed rows: `social`, `tempo`, `training` (`is_training_equivalent
 | `time` | time (HH:MM, 24h) | |
 | `register_link` | url | labeled "Register here" in the UI |
 | `notes` | text | |
-| `details` | jsonb, nullable | category-specific extra fields that don't need their own column — e.g. running's `surface` (`track`/`beach`/`road`) lives here as `{"surface": "track"}` instead of a dedicated `surface` column, so a future category isn't stuck with an irrelevant `surface` field |
+| `details` | jsonb, nullable | category-specific extra fields that don't need their own column — e.g. running's `surface` (`track`/`beach`/`road`/`indoor`) lives here as `{"surface": "track"}` instead of a dedicated `surface` column, so a future category isn't stuck with an irrelevant `surface` field |
 | `last_updated` | date | |
 
 Rows are never hard-deleted (§7 below covers the read-time filtering for

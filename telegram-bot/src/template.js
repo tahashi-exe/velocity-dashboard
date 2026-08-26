@@ -19,6 +19,7 @@ export const SURFACE_OPTIONS = [
   { value: 'track', label: 'Track' },
   { value: 'beach', label: 'Beach' },
   { value: 'road', label: 'Road' },
+  { value: 'indoor', label: 'Indoor' },
 ]
 
 export const DAY_OPTIONS = DAYS.map((day) => ({ value: day, label: day[0].toUpperCase() + day.slice(1) }))

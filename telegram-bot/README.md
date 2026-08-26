@@ -81,7 +81,7 @@ Send `/newclub` (or `/newevent`). The bot then asks, one message at a time:
 2. **Meeting point** — the place name people recognise ("Kite Beach").
 3. **Map pin** — three ways, whichever is easiest (see below).
 4. **Run type** — buttons: Social · Tempo · Training · Long run · Pyramid session.
-5. **Surface** — buttons: Track · Beach · Road.
+5. **Surface** — buttons: Track · Beach · Road · Indoor.
 6. **Freebies** — buttons: Yes · No.
 7. **Day** (clubs) — buttons, Monday…Sunday.
    **Date** (events) — typed, `YYYY-MM-DD`.

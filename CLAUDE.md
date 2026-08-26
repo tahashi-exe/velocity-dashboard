@@ -67,7 +67,7 @@ The JSON files keep their original v1 field names on disk; `data.js`'s
 {
   "name": "string", "location_name": "string", "lat": 0.0, "lng": 0.0,
   "type": "social | tempo | training | long_run | pyramid",
-  "surface": "track | beach | road",
+  "surface": "track | beach | road | indoor",
   "freebies": true,
   "day": "monday..sunday (lowercase)", "time": "HH:MM (24h)",
   "link": "url", "notes": "string", "last_updated": "YYYY-MM-DD"

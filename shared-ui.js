@@ -198,7 +198,7 @@ const SharedUI = (() => {
       { type: 'choice', key: 'type_key', label: 'Type', options: Velocity.CATEGORIES.running.types.map(t => t.key) },
     ]},
     { key: 'location', title: 'Location preference', sub: '', fields: [
-      { type: 'choice', key: 'surface', label: 'Where do you like to run?', options: ['track', 'beach', 'road'] },
+      { type: 'choice', key: 'surface', label: 'Where do you like to run?', options: ['track', 'beach', 'road', 'indoor'] },
     ]},
     { key: 'extras', title: 'Extras', sub: '', fields: [
       { type: 'choice', key: 'wantsFreebies', label: 'Interested in freebies / collabs?', options: ['Yes', 'No'] },
