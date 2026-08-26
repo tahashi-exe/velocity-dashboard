@@ -30,6 +30,22 @@ export async function getJsonFile({ token, repository, branch, path }) {
   return { sha: file.sha, data: decodeJson(file.content) }
 }
 
+// Photos land at a random, never-reused path (see index.js), so this always
+// creates a new file rather than updating one — no sha needed.
+export async function uploadBinaryFile({ token, repository, branch, path, base64, message }) {
+  const response = await fetch(`${githubApi}/repos/${repository}/contents/${path}`, {
+    method: 'PUT',
+    headers: { ...headers(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, content: base64, branch }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`GitHub could not upload ${path}: ${response.status} ${await response.text()}`)
+  }
+
+  return response.json()
+}
+
 export async function updateJsonFile({ token, repository, branch, path, sha, data, message }) {
   const response = await fetch(`${githubApi}/repos/${repository}/contents/${path}`, {
     method: 'PUT',

@@ -1,10 +1,10 @@
 import 'dotenv/config'
 import { Bot, InlineKeyboard } from 'grammy'
 import {
-  createSession, currentStep, goBack, openField, openMenu, promptText, recordFrom,
-  recordSummary, skipStep, stepsFor, submitAnswer, thingFor, validateAll,
+  addPhoto, createSession, currentStep, finishPhotos, goBack, openField, openMenu, promptText,
+  recordFrom, recordSummary, skipStep, stepsFor, submitAnswer, thingFor, validateAll,
 } from './template.js'
-import { getJsonFile, updateJsonFile } from './github.js'
+import { getJsonFile, updateJsonFile, uploadBinaryFile } from './github.js'
 import { deleteDraft, draftsFile, loadDrafts, saveDraft } from './drafts.js'
 
 const required = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ADMIN_CHAT_ID', 'GITHUB_TOKEN', 'GITHUB_REPOSITORY']
@@ -37,6 +37,13 @@ function parseNameArg(raw) {
 
 function pathFor(collection) {
   return collection === 'clubs' ? 'clubs.json' : 'events.json'
+}
+
+// Attached photos are committed to this repo path (never overwritten — each
+// gets a random id, see message:photo below) and referenced by their raw.
+// githubusercontent.com URL, which is stable across GitHub Pages deploys.
+function rawUrl(path) {
+  return `https://raw.githubusercontent.com/${process.env.GITHUB_REPOSITORY}/${branch}/${path}`
 }
 
 function githubBase(path) {
@@ -87,7 +94,16 @@ function stepKeyboard(session) {
   const nav = []
   if (session.mode === 'field') nav.push(['Back to fields', 'nav:back'])
   else if (session.stepIndex > 0) nav.push(['Back', 'nav:back'])
-  if (step.optional) nav.push(['Skip', 'nav:skip'])
+  if (step.key === 'photos') {
+    // Photos accumulate one at a time (message:photo / message:text below),
+    // so "Skip" (nothing yet) and "Done" (finalize what's there) are two
+    // different actions rather than one Skip button like every other
+    // optional field.
+    const count = (session.answers.photos || []).length
+    nav.push(count > 0 ? [`Done (${count})`, 'nav:photosdone'] : ['Skip', 'nav:skip'])
+  } else if (step.optional) {
+    nav.push(['Skip', 'nav:skip'])
+  }
   nav.push(['Cancel', 'nav:cancel'])
   for (const [label, data] of nav) keyboard.text(label, data)
 
@@ -193,7 +209,9 @@ bot.command('help', (ctx) => ctx.reply(
   + 'run type, surface, freebies and day; type the rest.\n'
   + '• For the map pin: drop a Telegram location pin (paperclip → Location), paste a Google Maps '
   + 'link, or type "25.1950, 55.2358".\n'
-  + '• Every question has Back and Cancel. Notes also has Skip.\n'
+  + '• For Photos: attach up to 3 photos right in the chat, or paste image links — either way, tap '
+  + 'Done when finished.\n'
+  + '• Every question has Back and Cancel. Notes and Photos also have Skip.\n'
   + '• /editclub <name> or /editevent <name> shows the record as a list of fields — tap the one '
   + 'you want to change, answer it, then Review and publish.\n'
   + '• Answers are saved as you go, so a bot restart mid-entry picks up where you left off.\n\n'
@@ -294,6 +312,56 @@ bot.on('message:location', async (ctx) => {
   return handleAnswer(ctx, session, ctx.message.location)
 })
 
+// One attached photo -> the largest size Telegram sent -> downloaded via the
+// Bot API's file endpoint -> staged in session.pendingUploads as base64.
+// Nothing reaches GitHub yet: actual upload happens at Approve and publish
+// (publishPendingUploads below), same "nothing written until you approve"
+// rule every other field already follows.
+bot.on('message:photo', async (ctx) => {
+  const session = sessions.get(chatKeyOf(ctx))
+  const step = session && currentStep(session)
+  if (!step) {
+    return ctx.reply('Thanks, but nothing is waiting on a photo right now. Start with /newclub or /newevent.')
+  }
+  if (step.key !== 'photos') {
+    return ctx.reply(`I'm on "${step.title}" right now — a photo doesn't fit here. Answer that first.`)
+  }
+  if ((session.answers.photos || []).length >= 3) {
+    return ctx.reply('Already have 3 photos — tap Done to continue, or Back to start over.')
+  }
+
+  await ctx.replyWithChatAction('upload_photo')
+  const sizes = ctx.message.photo
+  const largest = sizes[sizes.length - 1]
+  let file
+  let buffer
+  try {
+    file = await ctx.api.getFile(largest.file_id)
+    const res = await fetch(`https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`)
+    if (!res.ok) throw new Error(`download failed: ${res.status}`)
+    buffer = Buffer.from(await res.arrayBuffer())
+  } catch (error) {
+    console.error('Could not fetch photo from Telegram:', error.message)
+    return ctx.reply('Could not download that photo from Telegram — try sending it again.')
+  }
+
+  const ext = (file.file_path.split('.').pop() || 'jpg').toLowerCase()
+  const repoPath = `club-photos/${randomId()}.${ext}`
+  session.pendingUploads = session.pendingUploads || []
+  session.pendingUploads.push({ path: repoPath, base64: buffer.toString('base64') })
+
+  const result = addPhoto(session, rawUrl(repoPath))
+  if (result.error) {
+    persist(ctx, session)
+    return ctx.reply(`⚠️ ${result.error}`, { reply_markup: stepKeyboard(session) })
+  }
+  persist(ctx, session)
+  const notice = result.count >= 3
+    ? `Photo ${result.count} of 3 added — that's the max.`
+    : `Photo ${result.count} of 3 added. Send another, paste a link, or tap Done.`
+  return ctx.reply(notice, { reply_markup: stepKeyboard(session) })
+})
+
 bot.on('message:text', async (ctx) => {
   const session = sessions.get(chatKeyOf(ctx))
   if (!session) {
@@ -305,6 +373,29 @@ bot.on('message:text', async (ctx) => {
       ? 'Tap a field above to change it, or Review and publish.'
       : 'Use the buttons on the preview above — Approve and publish, Edit a field, or Reject.')
   }
+
+  // Photos accumulate (like attachments above) rather than replacing on
+  // every message, so pasted links get their own path instead of going
+  // through submitAnswer's one-shot replace.
+  if (step.key === 'photos') {
+    const lines = ctx.message.text.split('\n').map((s) => s.trim()).filter(Boolean)
+    const bad = lines.find((line) => !/^https?:\/\//i.test(line))
+    if (bad) {
+      return ctx.reply(`⚠️ "${bad}" isn't a link starting with http:// or https://. Paste links, attach photos, or tap Done.`, { reply_markup: stepKeyboard(session) })
+    }
+    let result = { count: (session.answers.photos || []).length }
+    for (const line of lines) {
+      result = addPhoto(session, line)
+      if (result.error) break
+    }
+    persist(ctx, session)
+    if (result.error) return ctx.reply(`⚠️ ${result.error}`, { reply_markup: stepKeyboard(session) })
+    const notice = result.count >= 3
+      ? `Photo ${result.count} of 3 added — that's the max.`
+      : `Photo${lines.length > 1 ? 's' : ''} added (${result.count} of 3). Send more, attach a photo, or tap Done.`
+    return ctx.reply(notice, { reply_markup: stepKeyboard(session) })
+  }
+
   return handleAnswer(ctx, session, ctx.message.text)
 })
 
@@ -349,6 +440,16 @@ bot.callbackQuery('nav:skip', async (ctx) => {
   const result = skipStep(session)
   if (result.error) return ctx.answerCallbackQuery({ text: result.error })
   await ctx.answerCallbackQuery({ text: 'Skipped.' })
+  await ctx.editMessageReplyMarkup().catch(() => {})
+  await render(ctx, session)
+})
+
+bot.callbackQuery('nav:photosdone', async (ctx) => {
+  const session = await requireSession(ctx)
+  if (!session) return
+  const result = await finishPhotos(session)
+  if (result.error) return ctx.answerCallbackQuery({ text: result.error })
+  await ctx.answerCallbackQuery({ text: 'Photos saved.' })
   await ctx.editMessageReplyMarkup().catch(() => {})
   await render(ctx, session)
 })
@@ -417,6 +518,26 @@ bot.callbackQuery(/^reject:(.+)$/, async (ctx) => {
 
 /* ---------- publishing ---------- */
 
+// Runs right before publishSession, inside the same Approve tap. Marks each
+// upload committed as it succeeds so a retry after a partial failure (e.g.
+// photos land but the clubs.json write then fails) never re-PUTs a path that
+// already exists on GitHub — that would 422 since uploadBinaryFile never
+// passes a sha.
+async function publishPendingUploads(session) {
+  for (const upload of session.pendingUploads || []) {
+    if (upload.committed) continue
+    await uploadBinaryFile({
+      token: process.env.GITHUB_TOKEN,
+      repository: process.env.GITHUB_REPOSITORY,
+      branch,
+      path: upload.path,
+      base64: upload.base64,
+      message: `data: add photo ${upload.path}`,
+    })
+    upload.committed = true
+  }
+}
+
 async function publishSession(session) {
   const path = pathFor(session.collection)
   const base = githubBase(path)
@@ -451,13 +572,16 @@ bot.callbackQuery(/^approve:(.+)$/, async (ctx) => {
   }
   try {
     await ctx.answerCallbackQuery({ text: 'Publishing…' })
+    await publishPendingUploads(session)
+    persist(ctx, session)
     const result = await publishSession(session)
     forget(ctx)
     await ctx.editMessageReplyMarkup().catch(() => {})
     await ctx.reply(`Published to GitHub. GitHub Pages should update in about 1–2 minutes.\n${result.commit.html_url}`)
   } catch (error) {
+    persist(ctx, session)
     console.error(error)
-    await ctx.reply(`Nothing was changed: ${error.message}`)
+    await ctx.reply(`${error.message}\n\nYour answers are saved — tap Approve and publish again to retry. Already-uploaded photos won't be re-sent.`)
   }
 })
 

@@ -125,8 +125,9 @@ const STEP_PHOTOS = {
   title: 'Photos',
   kind: 'text',
   optional: true,
-  prompt: 'Got photos for the map slideshow preview? Send up to 3 direct image links, one per line — '
-    + 'each has to start with https://.\nTap Skip if there are none.',
+  prompt: 'Got photos for the map slideshow preview? Attach up to 3 photos right here in the chat — '
+    + "I'll upload them — or paste direct image links instead, one per line.\n"
+    + 'Tap Done when you have what you want, or Skip if there are none.',
   field: { key: 'photos', required: false, type: 'photoList' },
 }
 
@@ -393,6 +394,27 @@ export async function submitAnswer(session, input) {
   session.previewId = null
   afterAnswer(session)
   return { ok: true, mode: session.mode }
+}
+
+// Photos accumulate one at a time (each attached photo, or each pasted link)
+// instead of arriving as a single typed answer — so unlike every other field,
+// there's no one-shot submitAnswer() for it. addPhoto() appends and stays on
+// the step; finishPhotos() commits whatever's accumulated (possibly none) and
+// advances, reusing submitAnswer's own validation/advance logic.
+export function addPhoto(session, url) {
+  const step = currentStep(session)
+  if (!step || step.key !== 'photos') return { error: 'Not currently on the photos question.' }
+  const existing = Array.isArray(session.answers.photos) ? session.answers.photos : []
+  if (existing.length >= 3) return { error: 'Already have 3 photos — tap Done to continue, or Back to start over.' }
+  session.answers.photos = [...existing, url]
+  session.previewId = null
+  return { ok: true, count: session.answers.photos.length }
+}
+
+export async function finishPhotos(session) {
+  const step = currentStep(session)
+  if (!step || step.key !== 'photos') return { error: 'Not currently on the photos question.' }
+  return submitAnswer(session, session.answers.photos || [])
 }
 
 export function skipStep(session) {

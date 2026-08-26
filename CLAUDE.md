@@ -87,9 +87,11 @@ Notes:
 - `surface` lives on the internal run as `details.surface`.
 - **`photos`** is optional — up to 3 image URLs. Missing/absent on older
   records (normalized to `[]` in `data.js`'s `toRun()`), which just means no
-  slideshow renders. Filled in via the Telegram bot's "Photos" step or by
-  hand; the detail panel (`shared-ui.js`: `openRunDetail`) crossfades between
-  them on a timer when there are 2+.
+  slideshow renders. Filled in via the Telegram bot's "Photos" step (attach
+  photos directly in the chat — the bot uploads them to `club-photos/` in
+  this repo and stores the resulting `raw.githubusercontent.com` URL — or
+  paste direct image links) or by hand; the detail panel (`shared-ui.js`:
+  `openRunDetail`) crossfades between them on a timer when there are 2+.
 
 ⚠️ Hand-edits must stay valid JSON — one syntax error breaks the whole file.
 

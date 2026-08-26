@@ -87,9 +87,14 @@ Send `/newclub` (or `/newevent`). The bot then asks, one message at a time:
    **Date** (events) — typed, `YYYY-MM-DD`.
 8. **Start time** — typed, 24-hour `HH:MM`.
 9. **Link** — Instagram profile or booking page, must start with `https://`.
-10. **Notes** — optional; tap **Skip** if there's nothing.
+10. **Photos** — optional, up to 3. Attach photos directly in the chat (the
+    bot downloads and stages them) or paste direct image links, one per
+    line — mix and match freely. Tap **Done** once you have what you want,
+    or **Skip** for none.
+11. **Notes** — optional; tap **Skip** if there's nothing.
 
-Every question carries **Back** and **Cancel**; Notes also carries **Skip**.
+Every question carries **Back** and **Cancel**; Notes and Photos also carry
+**Skip** (Photos shows **Done** instead once at least one photo is added).
 Anything typed that doesn't validate gets a plain-English reason and the same
 question again — nothing else is lost. Fixed-choice fields are buttons, so an
 invalid run type or day is impossible in the first place.
@@ -162,8 +167,15 @@ if you ever want drafts to survive deploys too.
 ## Current limits
 
 - The bot only accepts messages from the configured Telegram chat ID.
-- Text, buttons, and location pins only — no screenshot/photo parsing (that
-  needs an AI step, which this version deliberately doesn't use).
+- Photos are accepted and stored as-is (uploaded straight into the repo
+  under `club-photos/`) — the bot never looks *at* what's in them. No
+  screenshot parsing or auto-cropping; that would need an AI step, which
+  this version deliberately doesn't use.
+- Attached photos are staged locally and only uploaded to GitHub at
+  **Approve and publish**, same as every other field — but if publishing
+  fails partway (photos land, then the `clubs.json`/`events.json` write
+  fails), the already-uploaded photos stay on GitHub rather than rolling
+  back; retrying Approve won't re-upload them.
 - One entry at a time per chat; starting `/newclub` drops any earlier draft.
 - `/editclub` / `/editevent` match on exact existing name (case-insensitive).
   Renaming is fine — edit the Name field; the bot still knows which original
