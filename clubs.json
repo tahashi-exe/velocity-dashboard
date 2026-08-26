@@ -58,5 +58,19 @@
     "link": "https://www.instagram.com/lfgdubai?igsh=NzhpbmJsZTU3NnIx",
     "notes": "",
     "last_updated": "2026-08-07"
+  },
+  {
+    "name": "Kin RunClub",
+    "location_name": "Toga Coffee",
+    "lat": 25.309316,
+    "lng": 55.467763,
+    "type": "social",
+    "surface": "road",
+    "freebies": true,
+    "day": "saturday",
+    "time": "05:45",
+    "link": "https://www.instagram.com/kinclub.ae?igsi=eWk0NHV4MDhjNXNt",
+    "notes": "",
+    "last_updated": "2026-08-26"
   }
 ]
