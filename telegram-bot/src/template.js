@@ -22,6 +22,11 @@ export const SURFACE_OPTIONS = [
   { value: 'indoor', label: 'Indoor' },
 ]
 
+export const COST_OPTIONS = [
+  { value: 'free', label: 'Free' },
+  { value: 'paid', label: 'Paid' },
+]
+
 export const DAY_OPTIONS = DAYS.map((day) => ({ value: day, label: day[0].toUpperCase() + day.slice(1) }))
 
 function values(options) {
@@ -87,6 +92,31 @@ const STEP_FREEBIES = {
   field: { key: 'freebies', required: true, type: 'boolean' },
 }
 
+// Cost is about paying to take part; freebies is about free things handed out
+// on the day. They are independent — a free run can hand out free coffee, and a
+// paid race can hand out a free finisher tee — so both questions get asked.
+const STEP_COST = {
+  key: 'cost',
+  title: 'Cost',
+  kind: 'choice',
+  options: COST_OPTIONS,
+  prompt: 'Does it cost anything to take part?\nFree means anyone can just turn up. Paid means an entry fee or a ticket.',
+  field: { key: 'cost', required: true, enum: values(COST_OPTIONS) },
+}
+
+// Only asked when Cost is Paid — see visibleSteps(). Optional even then: a post
+// can be clearly ticketed without naming a figure, and that shouldn't block
+// publishing.
+const STEP_PRICE = {
+  key: 'price',
+  title: 'Price',
+  kind: 'text',
+  optional: true,
+  when: (answers) => answers.cost === 'paid',
+  prompt: 'How much?\nAmount with the currency — e.g. "AED 50". Tap Skip if the price isn\'t stated.',
+  field: { key: 'price', required: false },
+}
+
 const STEP_DAY = {
   key: 'day',
   title: 'Day',
@@ -140,17 +170,33 @@ const STEP_NOTES = {
   field: { key: 'notes', required: false },
 }
 
-const SHARED_HEAD = [STEP_NAME, STEP_LOCATION_NAME, STEP_LOCATION, STEP_TYPE, STEP_SURFACE, STEP_FREEBIES]
+const SHARED_HEAD = [STEP_NAME, STEP_LOCATION_NAME, STEP_LOCATION, STEP_TYPE, STEP_SURFACE, STEP_FREEBIES, STEP_COST, STEP_PRICE]
 const SHARED_TAIL = [STEP_TIME, STEP_LINK, STEP_PHOTOS, STEP_NOTES]
 
 const CLUB_STEPS = [...SHARED_HEAD, STEP_DAY, ...SHARED_TAIL]
 const EVENT_STEPS = [...SHARED_HEAD, STEP_DATE, ...SHARED_TAIL]
 
-const CLUB_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'day', 'time', 'link', 'photos', 'notes']
-const EVENT_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'date', 'time', 'link', 'photos', 'notes']
+const CLUB_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'cost', 'price', 'day', 'time', 'link', 'photos', 'notes']
+const EVENT_KEYS = ['name', 'location_name', 'lat', 'lng', 'type', 'surface', 'freebies', 'cost', 'price', 'date', 'time', 'link', 'photos', 'notes']
 
 export function stepsFor(collection) {
   return collection === 'clubs' ? CLUB_STEPS : EVENT_STEPS
+}
+
+/* The list the step machine actually walks. A step with a `when` predicate
+   drops out when the predicate is false against the answers so far, so Price
+   simply doesn't exist as a question on a free run.
+
+   Every piece of index math — stepIndex, "step N of M", Back, the field menu,
+   validation — must go through this and never through stepsFor(), or the
+   indices refer to two different lists. Because the list is derived from the
+   current answers each time it's read, changing Cost re-shapes it immediately:
+   answering "free" advances past where Price would have been, and switching a
+   record from paid to free stops validating (and stops showing) a Price that
+   is no longer asked for. */
+export function visibleSteps(collection, answers) {
+  const seen = answers || {}
+  return stepsFor(collection).filter((step) => (step.when ? step.when(seen) : true))
 }
 
 export function recordKeys(collection) {
@@ -360,11 +406,11 @@ export function createSession({ collection, action, matchName = null, record = n
 
 export function currentStep(session) {
   if (session.mode !== 'walk' && session.mode !== 'field') return null
-  return stepsFor(session.collection)[session.stepIndex] || null
+  return visibleSteps(session.collection, session.answers)[session.stepIndex] || null
 }
 
 export function stepNumber(session) {
-  const steps = stepsFor(session.collection)
+  const steps = visibleSteps(session.collection, session.answers)
   return { index: session.stepIndex, total: steps.length }
 }
 
@@ -374,7 +420,7 @@ function afterAnswer(session) {
     session.stepIndex = null
     return
   }
-  const steps = stepsFor(session.collection)
+  const steps = visibleSteps(session.collection, session.answers)
   if (session.stepIndex + 1 >= steps.length) {
     session.mode = 'preview'
     session.stepIndex = null
@@ -436,7 +482,7 @@ export function goBack(session) {
   }
   if (session.mode === 'preview') {
     session.mode = 'walk'
-    session.stepIndex = stepsFor(session.collection).length - 1
+    session.stepIndex = visibleSteps(session.collection, session.answers).length - 1
     session.previewId = null
     return { ok: true, mode: session.mode }
   }
@@ -448,7 +494,7 @@ export function goBack(session) {
 }
 
 export function openField(session, key) {
-  const index = stepsFor(session.collection).findIndex((step) => step.key === key)
+  const index = visibleSteps(session.collection, session.answers).findIndex((step) => step.key === key)
   if (index === -1) return { error: 'Unknown field.' }
   session.mode = 'field'
   session.stepIndex = index
@@ -472,6 +518,11 @@ export function recordFrom(collection, answers) {
     else if (key === 'lat' || key === 'lng') record[key] = Number(value)
     else if (key === 'freebies') record[key] = value === true
     else if (key === 'photos') record[key] = Array.isArray(value) ? value : []
+    else if (key === 'cost') record[key] = value === 'free' || value === 'paid' ? value : ''
+    // A price only means anything alongside a paid cost. Dropping it otherwise
+    // stops a stale figure surviving a Paid -> Free edit and rendering as
+    // "Free — AED 50".
+    else if (key === 'price') record[key] = answers.cost === 'paid' && value ? String(value) : ''
     else record[key] = value === undefined || value === null ? '' : value
   }
   return record
@@ -501,7 +552,7 @@ export function displayValue(step, answers) {
 // old type "track") when editing an existing record.
 export function validateAll(collection, answers) {
   const problems = []
-  for (const step of stepsFor(collection)) {
+  for (const step of visibleSteps(collection, answers)) {
     if (step.kind === 'location') {
       const lat = Number(answers.lat)
       const lng = Number(answers.lng)
@@ -531,7 +582,7 @@ export function validateAll(collection, answers) {
 
 export function summaryLines(collection, answers) {
   const problems = new Map(validateAll(collection, answers).map((p) => [p.key, p]))
-  return stepsFor(collection).map((step) => {
+  return visibleSteps(collection, answers).map((step) => {
     const flag = problems.has(step.key) ? '  ⚠️' : ''
     return `${step.title}: ${displayValue(step, answers)}${flag}`
   })

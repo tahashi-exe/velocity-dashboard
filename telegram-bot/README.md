@@ -83,18 +83,27 @@ Send `/newclub` (or `/newevent`). The bot then asks, one message at a time:
 4. **Run type** — buttons: Social · Tempo · Training · Long run · Pyramid session.
 5. **Surface** — buttons: Track · Beach · Road · Indoor.
 6. **Freebies** — buttons: Yes · No.
-7. **Day** (clubs) — buttons, Monday…Sunday.
+7. **Cost** — buttons: Free · Paid. This is whether you pay to *take part*;
+   Freebies above is about free things handed out on the day. They're
+   independent — a free run can hand out free coffee, and a paid race can hand
+   out a free finisher tee.
+8. **Price** — only asked when Cost is Paid. Typed, amount with currency
+   ("AED 50"). Optional even then: tap **Skip** if the price isn't stated.
+9. **Day** (clubs) — buttons, Monday…Sunday.
    **Date** (events) — typed, `YYYY-MM-DD`.
-8. **Start time** — typed, 24-hour `HH:MM`.
-9. **Link** — Instagram profile or booking page, must start with `https://`.
-10. **Photos** — optional, up to 3. Attach photos directly in the chat (the
+10. **Start time** — typed, 24-hour `HH:MM`.
+11. **Link** — Instagram profile or booking page, must start with `https://`.
+12. **Photos** — optional, up to 3. Attach photos directly in the chat (the
     bot downloads and stages them) or paste direct image links, one per
     line — mix and match freely. Tap **Done** once you have what you want,
     or **Skip** for none.
-11. **Notes** — optional; tap **Skip** if there's nothing.
+13. **Notes** — optional; tap **Skip** if there's nothing.
 
-Every question carries **Back** and **Cancel**; Notes and Photos also carry
-**Skip** (Photos shows **Done** instead once at least one photo is added).
+Every question carries **Back** and **Cancel**; Notes, Photos and Price also
+carry **Skip** (Photos shows **Done** instead once at least one photo is
+added). The question count shown in each header ("step 4 of 12") reflects the
+questions you'll actually be asked, so it reads 13 on a paid run and 12 on a
+free one.
 Anything typed that doesn't validate gets a plain-English reason and the same
 question again — nothing else is lost. Fixed-choice fields are buttons, so an
 invalid run type or day is impossible in the first place.
@@ -130,6 +139,7 @@ Map pin: 25.1866742, 55.3019726
 Run type: Training
 Surface: Road
 Freebies: No
+Cost: Free
 Day: Wednesday
 Start time: 19:30
 Link: https://www.instagram.com/framerunclub
@@ -137,12 +147,16 @@ Notes: (none)
 ```
 
 Tap **Start time**, send `19:00`, and you're straight back at this list — no
-re-walking the other nine questions. Tap **Review and publish** when you're
+re-walking the other questions. **Price** only appears in this list when Cost
+is Paid; switching a record from Paid to Free removes the question and clears
+any amount already stored, so a stale figure can't survive the edit. Tap **Review and publish** when you're
 done, then **Approve and publish** on the preview.
 
 A field flagged `⚠️` is one the bot can't publish as-is. That happens with
 older records: `LFG` still stores the retired run type `track`, so editing it
-asks you to pick one of the five real types before publishing. Fields the bot
+asks you to pick one of the five real types before publishing. The same applies
+to **Cost** — it was added after the first records were written, so the first
+edit of any of those asks you to set Free or Paid before it will publish. Fields the bot
 no longer asks about (the retired `pace`) are kept in the JSON exactly as they
 were.
 

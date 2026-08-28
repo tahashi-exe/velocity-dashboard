@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { Bot, InlineKeyboard } from 'grammy'
 import {
   addPhoto, createSession, currentStep, finishPhotos, goBack, openField, openMenu, promptText,
-  recordFrom, recordSummary, skipStep, stepsFor, submitAnswer, thingFor, validateAll,
+  recordFrom, recordSummary, skipStep, submitAnswer, thingFor, validateAll, visibleSteps,
 } from './template.js'
 import { getJsonFile, updateJsonFile, uploadBinaryFile } from './github.js'
 import { deleteDraft, draftsFile, loadDrafts, saveDraft } from './drafts.js'
@@ -112,7 +112,7 @@ function stepKeyboard(session) {
 
 function stepMessage(session, notice) {
   const step = currentStep(session)
-  const steps = stepsFor(session.collection)
+  const steps = visibleSteps(session.collection, session.answers)
   const head = session.mode === 'field'
     ? `Editing ${step.title}`
     : `${step.title} — step ${session.stepIndex + 1} of ${steps.length}`
@@ -124,7 +124,7 @@ function stepMessage(session, notice) {
 
 function menuKeyboard(session) {
   const keyboard = new InlineKeyboard()
-  for (const row of chunk(stepsFor(session.collection), 2)) {
+  for (const row of chunk(visibleSteps(session.collection, session.answers), 2)) {
     for (const step of row) keyboard.text(step.title, `field:${step.key}`)
     keyboard.row()
   }
