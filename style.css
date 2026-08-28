@@ -755,11 +755,15 @@ button:active {
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -6px 24px rgba(0,0,0,0.15);
   z-index: 900;
-  /* Collapsed: just the drag handle — decluttered, and clears the corner
-     switcher. The 40px peek is measured from the home indicator, not from the
-     physical screen edge, so the inset is added to the peek; otherwise the
-     handle would sit underneath the indicator and become untappable. */
-  transform: translateY(calc(100% - 40px - env(safe-area-inset-bottom, 0px)));
+  /* Collapsed: the grab bar and nothing else. --sheet-peek MUST equal the
+     rendered height of .sheet-handle — when the two drifted apart the sheet
+     showed a sliver of the title row below the bar, which read as a broken
+     half-cut sheet rather than a bottom bar. Change them together.
+     The peek is measured from the home indicator, not the physical screen
+     edge, so the inset is added on top; otherwise the bar would sit under the
+     indicator and become untappable. */
+  --sheet-peek: 60px;
+  transform: translateY(calc(100% - var(--sheet-peek) - env(safe-area-inset-bottom, 0px)));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   transition: transform 0.25s ease;
   display: flex;
@@ -767,19 +771,58 @@ button:active {
 }
 .list-sheet.expanded { transform: translateY(0); }
 
+/* While a finger is down the sheet follows it directly, so the easing that
+   makes tap-to-open feel good would fight the drag. */
+.list-sheet.dragging { transition: none; }
+
 .sheet-handle {
-  padding: 14px 0 8px;
+  height: var(--sheet-peek);
+  box-sizing: border-box;
+  padding: 10px 0 0;
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: 7px;
   cursor: grab;
   flex-shrink: 0;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
+.sheet-handle:active { cursor: grabbing; }
+
+/* Expanded, the bar is only a grab target — the label would duplicate the
+   "All runs" title sitting directly beneath it. */
+.list-sheet.expanded .sheet-handle { height: 34px; padding: 14px 0 8px; gap: 0; }
+.list-sheet.expanded .handle-label { display: none; }
+
 .handle-bar {
   width: 40px;
   height: 5px;
   border-radius: 999px;
   background: var(--border);
+  flex-shrink: 0;
+}
+.handle-label {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Nudge: runs only until the sheet has been opened once (JS drops .hint and
+   remembers it), so it invites a pull without nagging forever. */
+@keyframes sheet-nudge {
+  0%, 62%, 100% { transform: translateY(calc(100% - var(--sheet-peek) - env(safe-area-inset-bottom, 0px))); }
+  74%           { transform: translateY(calc(100% - var(--sheet-peek) - 11px - env(safe-area-inset-bottom, 0px))); }
+  86%           { transform: translateY(calc(100% - var(--sheet-peek) - 4px  - env(safe-area-inset-bottom, 0px))); }
+}
+.list-sheet.hint:not(.expanded):not(.dragging) {
+  animation: sheet-nudge 2.6s ease-in-out 1.2s 3;
 }
 
 .this-week-banner {
@@ -1002,7 +1045,7 @@ button:active, .rsvp-btn:active, .scope-btn:active {
   padding: 0 20px 8px;
   flex-shrink: 0;
 }
-.sheet-title-row .sheet-title { padding: 0; }
+.sheet-title-row .sheet-title { padding: 0; min-width: 0; }
 .sheet-title {
   padding: 0 20px 8px;
   font-weight: 700;
@@ -1013,7 +1056,17 @@ button:active, .rsvp-btn:active, .scope-btn:active {
   flex-shrink: 0;
 }
 
-.prefs-chip {
+/* Shared style for the sheet's toggle chips ("Free", "Match my prefs") — both
+   are independent on/off filters, unlike the single-select .type-chip row. */
+.sheet-chip-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.prefs-chip,
+.free-chip {
   flex-shrink: 0;
   border: 1.5px solid var(--border);
   background: var(--surface);
@@ -1026,7 +1079,12 @@ button:active, .rsvp-btn:active, .scope-btn:active {
   white-space: nowrap;
   font-family: inherit;
 }
-.prefs-chip.active { background: var(--lime); border-color: var(--lime); color: var(--purple-dark); }
+.prefs-chip.active,
+.free-chip.active { background: var(--lime); border-color: var(--lime); color: var(--purple-dark); }
+
+/* A free run is the happy case — give the detail panel's Cost row the same
+   lime the freebies ring and active chips use. */
+.info-row .value-free { color: var(--lime-dark); font-weight: 700; }
 
 /* Type filter chips — shared by Variant A's sheet and Variant C's feed */
 .list-filter-row {
@@ -1170,4 +1228,7 @@ button:active, .rsvp-btn:active, .scope-btn:active {
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 50ms !important; animation-duration: 50ms !important; }
   .landing-pin { animation: none; }
+  /* The global duration override above would turn the sheet nudge into a
+     twitch rather than removing it, so disable that animation explicitly. */
+  .list-sheet.hint:not(.expanded):not(.dragging) { animation: none; }
 }

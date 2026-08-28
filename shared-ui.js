@@ -86,6 +86,9 @@ const SharedUI = (() => {
     const visual = Velocity.pinVisual(run);
     const currentRsvp = Velocity.getRsvp(run.id);
     const photos = run.photos || [];
+    // null on records predating the cost field — the row is dropped rather than
+    // rendered as "unknown", so older entries look finished, not broken.
+    const costText = Velocity.costLabel(run);
 
     runPanelContent.innerHTML = `
       ${photos.length ? `
@@ -108,6 +111,11 @@ const SharedUI = (() => {
         <span class="label">Right now</span>
         <span class="value">${status.phase === 'expired' ? 'Already happened' : status.label}</span>
       </div>
+      ${costText ? `
+      <div class="info-row">
+        <span class="label">Cost</span>
+        <span class="value${run.cost === 'free' ? ' value-free' : ''}">${costText}</span>
+      </div>` : ''}
 
       <a class="register-btn" href="${run.register_link}" target="_blank" rel="noopener">Register here</a>
       <button type="button" class="ics-btn" id="ics-btn">Add to calendar</button>

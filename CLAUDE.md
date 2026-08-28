@@ -69,6 +69,7 @@ The JSON files keep their original v1 field names on disk; `data.js`'s
   "type": "social | tempo | training | long_run | pyramid",
   "surface": "track | beach | road | indoor",
   "freebies": true,
+  "cost": "free | paid", "price": "string (empty unless cost is paid)",
   "day": "monday..sunday (lowercase)", "time": "HH:MM (24h)",
   "link": "url", "photos": ["url", "url", "url"],
   "notes": "string", "last_updated": "YYYY-MM-DD"
@@ -85,6 +86,15 @@ Notes:
   `training` via `mapOldTypeToKey()` in `data.js`. Known keys pass through.
   `LFG` in `clubs.json` is still `"track"` and relies on this.
 - `surface` lives on the internal run as `details.surface`.
+- **`cost` / `price`** — `cost` is whether you pay to take part (`free` /
+  `paid`); `freebies` is separately about free things handed out on the day, so
+  the two are independent. `price` only carries a value when `cost` is `paid`
+  and is cleared otherwise, including on a Paid → Free edit. Both were added
+  after the first records were written, so records predating them have no
+  `cost`; the bot flags that on the first edit. `data.js`'s `toRun()` normalizes
+  an absent or unrecognised `cost` to `null` — meaning *unknown*, never *free* —
+  and `costLabel()` returns `null` for it so the detail panel omits the row
+  rather than asserting anything.
 - **`photos`** is optional — up to 3 image URLs. Missing/absent on older
   records (normalized to `[]` in `data.js`'s `toRun()`), which just means no
   slideshow renders. Filled in via the Telegram bot's "Photos" step (attach
@@ -121,6 +131,13 @@ so `tempo` / `long_run` / `pyramid` currently render as white pins.
   activates if the user actually finishes.
 - **Type filter chips** (All / Social / Tempo / Training / Long run / Pyramid
   session) filter the sheet and the map markers together.
+- **"Free" chip** in the bottom sheet, beside "Match my prefs" — cost is an
+  independent axis from run type, so it's an on/off toggle rather than another
+  (single-select) type chip. It matches `cost === 'free'` strictly: a run with
+  no cost recorded is unknown, not free, and stays out. Because no record
+  predating the bot's Cost question has the field, this can legitimately empty
+  the list — `emptyMessage()` in `variant-a.js` says so in as many words
+  instead of showing a bare "nothing here".
 - **Scope toggle** in the topbar switches This Week / This Month.
 
 ## Status logic (`data.js`: `statusOf`)
@@ -141,8 +158,14 @@ only once geolocation resolves, so distance sorting is opt-in. Falls back to
 the closest upcoming runs when nothing is in the `'soon'` window.
 
 ## Other UI
-- **Bottom sheet** (`#list-sheet`) — collapsed to just its drag handle;
-  tap or drag the handle to expand. Holds "All runs" + filters + the list.
+- **Bottom sheet** (`#list-sheet`) — collapsed to a full-width bottom bar
+  (grab pill + "All runs" label) sitting flush on the bottom edge; tap or pull
+  it up to expand. Holds "All runs" + filters + the list. The collapsed peek is
+  `--sheet-peek` in `style.css` and **must equal the rendered height of
+  `.sheet-handle`** — when the two drifted apart, a sliver of the title row
+  showed under the bar. Until the sheet has been opened once, the bar plays a
+  3-cycle `sheet-nudge` bounce inviting a pull-up; opening it drops the hint
+  and remembers that in `localStorage` (`velocity_sheet_hint_seen`).
 - **Calendar** (⋯ → Calendar, `calendar.js`) — vertically stacked day bands in
   a fixed per-weekday pastel palette, big date numerals, runs as dark pill
   chips. Recurring runs appear on every matching weekday in range. Days with
@@ -171,6 +194,9 @@ Pages rebuilds in about a minute.
 **Telegram bot** (`/telegram-bot`): a private always-on Node process (grammy),
 separate from this static site, deliberately with **no AI/API dependency**.
 It asks one question at a time with tappable buttons for fixed-choice fields,
+skips questions that don't apply (a step may carry a `when` predicate —
+`visibleSteps()` in `template.js` derives the list actually walked, and all
+index math must go through it, never `stepsFor()`),
 accepts a native Telegram location pin / Maps link / typed coordinates for
 the meeting point, shows a preview, and only commits via GitHub's Contents
 API (`telegram-bot/src/github.js`) after an explicit **Approve and publish**
@@ -208,6 +234,10 @@ decision, not an oversight.
 - [x] Telegram bot — guided question flow (no AI)
 - [x] Club photo slideshow (up to 3 photos, crossfade) — schema, panel
       rendering, and the bot's guided flow / `/editclub` menu
+- [x] Free/paid `cost` (+ conditional `price`) — bot flow, detail-panel Cost
+      row, and the "Free" filter chip
+- [ ] Backfill `cost` on the 5 existing records (all currently unknown, so the
+      Free chip matches nothing until then)
 - [ ] Supabase backend, accounts/sign-in, synced RSVPs
 - [ ] Freebies page
 - [ ] Glowing GPX routes (pending GPX files from Taha)
@@ -219,8 +249,13 @@ decision, not an oversight.
   `training` is flagged `trainingEquivalent`. Fine for now; revisit if those
   types get common enough to need their own color.
 - `freebies` / `surface` values on the 4 existing clubs are Claude's best
-  guesses, not confirmed by Taha — worth double-checking.
-- List sheet drag is click/tap + simple pointer delta, not full physics.
+  guesses, not confirmed by Taha — worth double-checking. `cost` was
+  deliberately *not* guessed the same way: every existing record has it unset.
+- The detail panel shows Cost but the list rows and map pins don't — a free run
+  is only visible as such after opening it, or by using the Free chip.
+- List sheet drag tracks the pointer live and snaps to the nearer end on
+  release (biased toward opening), but it has no velocity/inertia physics — a
+  fast flick is treated the same as a slow pull.
 - The landing hero's "globe" is a flat zoom, not a real 3D globe — see the
   MapLibre version note in Tech stack.
 - Onboarding doesn't re-skip the landing page on repeat visits.

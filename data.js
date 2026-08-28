@@ -52,6 +52,12 @@ const Velocity = (() => {
       lng: item.lng,
       type_key: mapOldTypeToKey(item.type),
       freebies: !!item.freebies,
+      // Whether you pay to take part — distinct from `freebies`, which is about
+      // free things handed out on the day. Records written before the bot asked
+      // this have neither field; they normalize to null, which reads as
+      // "unknown" everywhere rather than as "free".
+      cost: item.cost === 'free' || item.cost === 'paid' ? item.cost : null,
+      price: item.cost === 'paid' && item.price ? String(item.price) : '',
       day_of_week: kind === 'recurring' ? item.day : null,
       event_date: kind === 'one_off' ? item.date : null,
       time: item.time,
@@ -71,6 +77,14 @@ const Velocity = (() => {
       ...clubs.map(c => toRun(c, 'recurring')),
       ...events.map(e => toRun(e, 'one_off')),
     ];
+  }
+
+  // null when the run predates the cost field — callers omit the row entirely
+  // rather than claiming anything about a price nobody recorded.
+  function costLabel(run) {
+    if (run.cost === 'free') return 'Free';
+    if (run.cost !== 'paid') return null;
+    return run.price || 'Paid (amount not listed)';
   }
 
   function typeInfo(run) {
@@ -275,7 +289,7 @@ const Velocity = (() => {
   return {
     DAYS, WEEK_MIN, MONTH_MIN, CATEGORIES,
     loadRuns, typeInfo, typeLabel, pinVisual, statusOf, scheduleLabel, withinScope,
-    getRsvp, setRsvp, getPrefs, savePrefs, matchesPrefs,
+    getRsvp, setRsvp, getPrefs, savePrefs, matchesPrefs, costLabel,
     icsForRun, downloadICS, nextOccurrence,
     capitalize, formatTime, formatMinutes, parseDateOnly, formatDate, haversineKm, slug,
   };

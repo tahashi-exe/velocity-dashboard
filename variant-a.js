@@ -7,7 +7,7 @@
 const EXPLORE_LOCKED = ['Yoga', 'Pilates', 'Badminton', 'Padel', 'Cycling'];
 
 const VariantA = (() => {
-  let runs = [], map, markers = [], scope = 'week', typeFilter = 'all', matchPrefs = false;
+  let runs = [], map, markers = [], scope = 'week', typeFilter = 'all', matchPrefs = false, freeOnly = false;
   let runNowPool = [], runNowUsingSoon = false, runNowUserLoc = null, runNowSortMode = 'time';
 
   function mount() {
@@ -38,10 +38,20 @@ const VariantA = (() => {
       <main id="map-a" class="map-surface"></main>
 
       <section id="list-sheet" class="list-sheet">
-        <div id="sheet-handle" class="sheet-handle"><span class="handle-bar"></span></div>
+        <div id="sheet-handle" class="sheet-handle" role="button" tabindex="0"
+             aria-controls="list-content" aria-expanded="false"
+             aria-label="Show all runs">
+          <span class="handle-bar"></span>
+          <span class="handle-label">All runs</span>
+        </div>
         <div class="sheet-title-row">
           <div class="sheet-title">All runs</div>
-          <button type="button" id="prefs-filter-btn" class="prefs-chip${matchPrefs ? ' active' : ''}">Match my prefs</button>
+          <div class="sheet-chip-group">
+            <button type="button" id="free-filter-btn" class="free-chip${freeOnly ? ' active' : ''}"
+                    aria-pressed="${freeOnly}">Free</button>
+            <button type="button" id="prefs-filter-btn" class="prefs-chip${matchPrefs ? ' active' : ''}"
+                    aria-pressed="${matchPrefs}">Match my prefs</button>
+          </div>
         </div>
         <div id="type-filter-row" class="list-filter-row">${SharedUI.typeFilterChipsHtml(typeFilter)}</div>
         <div id="list-content" class="list-content"></div>
@@ -71,18 +81,30 @@ const VariantA = (() => {
 
     SharedUI.wireTypeFilter(document.getElementById('type-filter-row'), (key) => { typeFilter = key; render(); });
 
+    // Cost filters a different axis than the type chips (which are single-select),
+    // so it's a toggle alongside "Match my prefs" rather than another type chip.
+    const freeBtn = document.getElementById('free-filter-btn');
+    freeBtn.addEventListener('click', () => {
+      freeOnly = !freeOnly;
+      freeBtn.classList.toggle('active', freeOnly);
+      freeBtn.setAttribute('aria-pressed', String(freeOnly));
+      render();
+    });
+
     const prefsBtn = document.getElementById('prefs-filter-btn');
     prefsBtn.addEventListener('click', () => {
       if (!Velocity.getPrefs()) {
         SharedUI.openOnboarding({}, () => {
           matchPrefs = !!Velocity.getPrefs();
           prefsBtn.classList.toggle('active', matchPrefs);
+          prefsBtn.setAttribute('aria-pressed', String(matchPrefs));
           render();
         });
         return;
       }
       matchPrefs = !matchPrefs;
       prefsBtn.classList.toggle('active', matchPrefs);
+      prefsBtn.setAttribute('aria-pressed', String(matchPrefs));
       render();
     });
 
@@ -108,17 +130,7 @@ const VariantA = (() => {
       moreBtn.setAttribute('aria-expanded', 'false');
     });
 
-    const sheet = document.getElementById('list-sheet');
-    document.getElementById('sheet-handle').addEventListener('click', () => sheet.classList.toggle('expanded'));
-    let dragStartY = null;
-    document.getElementById('sheet-handle').addEventListener('pointerdown', e => { dragStartY = e.clientY; });
-    window.addEventListener('pointerup', e => {
-      if (dragStartY === null) return;
-      const delta = e.clientY - dragStartY;
-      if (delta < -30) sheet.classList.add('expanded');
-      else if (delta > 30) sheet.classList.remove('expanded');
-      dragStartY = null;
-    });
+    wireSheet();
 
     document.getElementById('cal-btn').addEventListener('click', () => {
       moreMenu.classList.remove('open');
@@ -149,6 +161,19 @@ const VariantA = (() => {
     Velocity.loadRuns().then(data => { runs = data; render(); });
   }
 
+  // Names the filter that actually emptied the list. The free-filter case gets
+  // its own wording because runs added before the bot asked about cost have no
+  // cost recorded, so "Free" can legitimately hide everything.
+  function emptyMessage() {
+    if (freeOnly && !runs.some(r => r.cost === 'free')) {
+      return 'No runs are marked free yet. Runs added before the bot started asking about cost don\'t have it recorded.';
+    }
+    if (freeOnly && matchPrefs) return 'Nothing free matches your prefs in this window.';
+    if (freeOnly) return 'Nothing free in this window.';
+    if (matchPrefs) return 'Nothing matches your prefs in this window.';
+    return 'Nothing in this window.';
+  }
+
   function inScope() {
     const now = new Date();
     const prefs = Velocity.getPrefs();
@@ -157,7 +182,106 @@ const VariantA = (() => {
       .filter(x => Velocity.withinScope(x.status, x.r, scope))
       .filter(x => typeFilter === 'all' || x.r.type_key === typeFilter)
       .filter(x => !matchPrefs || Velocity.matchesPrefs(x.r, prefs))
+      // Strictly cost === 'free': a run with no cost recorded is unknown, not
+      // free, so it stays out rather than being guessed into the results.
+      .filter(x => !freeOnly || x.r.cost === 'free')
       .sort((a, b) => a.status.minutesDiff - b.status.minutesDiff);
+  }
+
+  /* ---------- Bottom sheet: tap, drag, and the pull-up nudge ----------
+     The sheet tracks the finger directly while dragging rather than only
+     reading the delta at pointerup, so a slow pull shows the sheet moving
+     with it. Release snaps to whichever end is nearer, biased toward opening
+     since a half-pull almost always means "open". */
+
+  const SHEET_HINT_KEY = 'velocity_sheet_hint_seen';
+
+  function wireSheet() {
+    const sheet = document.getElementById('list-sheet');
+    const handle = document.getElementById('sheet-handle');
+
+    let startY = null;
+    let startExpanded = false;
+    let travel = 0;
+    let moved = false;
+
+    // Distance between the collapsed and expanded positions. Read per gesture
+    // because the sheet is sized in dvh, which changes when mobile browser
+    // chrome hides on scroll.
+    function travelPx() {
+      const peek = parseFloat(getComputedStyle(sheet).getPropertyValue('--sheet-peek')) || 60;
+      return Math.max(0, sheet.offsetHeight - peek);
+    }
+
+    function setExpanded(next) {
+      sheet.classList.toggle('expanded', next);
+      handle.setAttribute('aria-expanded', String(next));
+      handle.setAttribute('aria-label', next ? 'Hide all runs' : 'Show all runs');
+      if (next) dismissHint(sheet);
+    }
+
+    handle.addEventListener('pointerdown', (e) => {
+      startY = e.clientY;
+      startExpanded = sheet.classList.contains('expanded');
+      travel = travelPx();
+      moved = false;
+      sheet.classList.add('dragging');
+      try { handle.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (startY === null) return;
+      const delta = e.clientY - startY;
+      // 10px, not a couple of px: a finger tap wobbles, and treating that
+      // wobble as a drag made taps snap shut again instead of opening.
+      if (Math.abs(delta) > 10) moved = true;
+      const base = startExpanded ? 0 : travel;
+      const y = Math.min(travel, Math.max(0, base + delta));
+      sheet.style.transform = `translateY(${y}px)`;
+    });
+
+    function endDrag(e) {
+      if (startY === null) return;
+      const delta = e.clientY - startY;
+      const base = startExpanded ? 0 : travel;
+      const y = Math.min(travel, Math.max(0, base + delta));
+
+      startY = null;
+      sheet.classList.remove('dragging');
+      sheet.style.transform = '';        // hand control back to the CSS classes
+
+      // A tap (no real movement) toggles; a drag snaps to the nearer end, with
+      // the midpoint pushed past halfway so a short pull up still opens.
+      if (!moved) setExpanded(!startExpanded);
+      else setExpanded(y < travel * 0.65);
+    }
+
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', () => {
+      if (startY === null) return;
+      startY = null;
+      sheet.classList.remove('dragging');
+      sheet.style.transform = '';
+      setExpanded(startExpanded);
+    });
+
+    handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      setExpanded(!sheet.classList.contains('expanded'));
+    });
+
+    if (!hintSeen()) sheet.classList.add('hint');
+  }
+
+  function hintSeen() {
+    try { return localStorage.getItem(SHEET_HINT_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function dismissHint(sheet) {
+    if (!sheet.classList.contains('hint')) return;
+    sheet.classList.remove('hint');
+    try { localStorage.setItem(SHEET_HINT_KEY, '1'); } catch (e) { /* private mode */ }
   }
 
   function render() {
@@ -177,7 +301,7 @@ const VariantA = (() => {
           </div>
         </div>
       `;
-    }).join('') || `<div class="empty-state"><p>${matchPrefs ? 'Nothing matches your prefs in this window.' : 'Nothing in this window.'}</p></div>`;
+    }).join('') || `<div class="empty-state"><p>${emptyMessage()}</p></div>`;
 
     document.querySelectorAll('#list-content .list-row').forEach(row => {
       row.addEventListener('click', () => {
