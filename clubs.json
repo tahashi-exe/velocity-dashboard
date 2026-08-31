@@ -16,18 +16,18 @@
   },
   {
     "name": "The Uncommon Club",
-    "location_name": "Dubai Mall",
-    "lat": 25.196712,
-    "lng": 55.280011,
+    "location_name": "Feels, Kite Beach",
+    "lat": 25.185185,
+    "lng": 55.224511,
     "pace": "easy / social",
     "type": "social",
     "surface": "beach",
-    "freebies": false,
+    "freebies": true,
     "day": "thursday",
-    "time": "06:00",
+    "time": "05:00",
     "link": "https://www.instagram.com/theeuncommonclub",
     "notes": "",
-    "last_updated": "2026-08-26"
+    "last_updated": "2026-08-31"
   },
   {
     "name": "Frame Run Club",
