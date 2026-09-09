@@ -193,25 +193,43 @@ Pages rebuilds in about a minute.
 
 **Telegram bot** (`/telegram-bot`): a private always-on Node process (grammy),
 separate from this static site, deliberately with **no AI/API dependency**.
-It asks one question at a time with tappable buttons for fixed-choice fields,
-skips questions that don't apply (a step may carry a `when` predicate —
-`visibleSteps()` in `template.js` derives the list actually walked, and all
-index math must go through it, never `stepsFor()`),
-accepts a native Telegram location pin / Maps link / typed coordinates for
-the meeting point, shows a preview, and only commits via GitHub's Contents
-API (`telegram-bot/src/github.js`) after an explicit **Approve and publish**
-tap. `/editclub <name>` opens a field menu to change one field rather than
-re-walking every question. In-progress answers persist to disk
-(`telegram-bot/src/drafts.js`) so a restart resumes — though Railway's
-filesystem is ephemeral across *redeploys*. Deployed on Railway (root
-directory `telegram-bot`) — see `telegram-bot/README.md`.
+It sends every field at once as a `key: value` block (`buildForm()` in
+`template.js`), which Taha fills in and sends back as one message
+(`parseForm()`), then asks for photos, then shows a preview. Only an explicit
+**Approve and publish** tap commits, via GitHub's Contents API
+(`telegram-bot/src/github.js`).
+
+Session modes are `form` → `photos` → `preview`. Photos are the one field
+excluded from the block, because a Telegram attachment is always its own
+message; `Edit the form` and `Back to the form` return to `form` mode with
+answers (photos included) preserved.
+
+The `STEP_*` definitions in `template.js` remain the single source of truth
+for every field's label, options and validation — the form only changes how
+they're presented. A step may carry a `when` predicate (Price applies only to
+a paid run); `visibleSteps()` derives the list that actually applies, and the
+preview summary and pre-publish check both go through it, so a stale Price
+can't reach a published record. `parseForm()` re-applies the same predicate.
+
+The location line accepts a Maps link or typed coordinates. A dropped Telegram
+pin can't be typed into a pasted block, so the bot replies with the
+coordinates as copyable text instead. `/editclub <name>` sends the same block
+pre-filled from the stored record, and publish merges over that record so
+fields the bot no longer asks about (the retired `pace`) survive untouched.
+
+In-progress answers persist to disk (`telegram-bot/src/drafts.js`) so a
+restart resumes — though Railway's filesystem is ephemeral across *redeploys*.
+Note `drafts.js` whitelists valid session modes; it must be updated in step
+with any mode change or every saved draft is silently discarded on boot.
+Deployed on Railway (root directory `telegram-bot`) — see
+`telegram-bot/README.md`.
 
 Keep the bot deterministic. The no-AI constraint is a deliberate design
 decision, not an oversight.
 
 ## Conventions
 - Keep dependency-light; no framework unless the project clearly outgrows it.
-  The bot's step machine is hand-rolled for this reason rather than pulling in
+  The bot's form parsing is hand-rolled for this reason rather than pulling in
   `@grammyjs/conversations`.
 - No API keys in the frontend (MapLibre + OpenFreeMap are free/keyless). The
   Telegram bot has its own secrets in `telegram-bot/.env` — **never** read,
@@ -231,9 +249,9 @@ decision, not an oversight.
 - [x] Calendar day-band view, Explore (coming soon) panel
 - [x] RSVP + per-event `.ics` export (local only)
 - [x] PWA manifest, service worker, platform-aware install tutorial
-- [x] Telegram bot — guided question flow (no AI)
+- [x] Telegram bot — single paste-back form, then photos (no AI)
 - [x] Club photo slideshow (up to 3 photos, crossfade) — schema, panel
-      rendering, and the bot's guided flow / `/editclub` menu
+      rendering, and the bot's photos step (asked after the form block)
 - [x] Free/paid `cost` (+ conditional `price`) — bot flow, detail-panel Cost
       row, and the "Free" filter chip
 - [ ] Backfill `cost` on the 5 existing records (all currently unknown, so the

@@ -1,8 +1,8 @@
 import 'dotenv/config'
 import { Bot, InlineKeyboard } from 'grammy'
 import {
-  addPhoto, createSession, currentStep, finishPhotos, goBack, openField, openMenu, promptText,
-  recordFrom, recordSummary, skipStep, submitAnswer, thingFor, validateAll, visibleSteps,
+  addPhoto, applyForm, backToForm, buildForm, createSession, finishPhotos, parseForm,
+  recordFrom, recordSummary, thingFor, validateAll,
 } from './template.js'
 import { getJsonFile, updateJsonFile, uploadBinaryFile } from './github.js'
 import { deleteDraft, draftsFile, loadDrafts, saveDraft } from './drafts.js'
@@ -72,84 +72,54 @@ function forget(ctx) {
 
 /* ---------- rendering ---------- */
 
-function chunk(items, perRow) {
-  const rows = []
-  for (let i = 0; i < items.length; i += perRow) rows.push(items.slice(i, i + perRow))
-  return rows
+// The form block goes inside <pre>, which most Telegram clients render with a
+// tap-to-copy affordance — the whole point of a paste-back flow. HTML parse
+// mode (not Markdown) because club links and values like "long_run" are full
+// of underscores that Markdown chokes on.
+function escapeHtml(text) {
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function stepKeyboard(session) {
-  const step = currentStep(session)
-  const keyboard = new InlineKeyboard()
-
-  if (step.kind === 'choice') {
-    for (const row of chunk(step.options, step.options.length > 4 ? 3 : 2)) {
-      for (const option of row) keyboard.text(option.label, `ans:${option.value}`)
-      keyboard.row()
-    }
-  } else if (step.kind === 'boolean') {
-    keyboard.text('Yes', 'ans:yes').text('No', 'ans:no').row()
-  }
-
-  const nav = []
-  if (session.mode === 'field') nav.push(['Back to fields', 'nav:back'])
-  else if (session.stepIndex > 0) nav.push(['Back', 'nav:back'])
-  if (step.key === 'photos') {
-    // Photos accumulate one at a time (message:photo / message:text below),
-    // so "Skip" (nothing yet) and "Done" (finalize what's there) are two
-    // different actions rather than one Skip button like every other
-    // optional field.
-    const count = (session.answers.photos || []).length
-    nav.push(count > 0 ? [`Done (${count})`, 'nav:photosdone'] : ['Skip', 'nav:skip'])
-  } else if (step.optional) {
-    nav.push(['Skip', 'nav:skip'])
-  }
-  nav.push(['Cancel', 'nav:cancel'])
-  for (const [label, data] of nav) keyboard.text(label, data)
-
-  return keyboard
-}
-
-function stepMessage(session, notice) {
-  const step = currentStep(session)
-  const steps = visibleSteps(session.collection, session.answers)
-  const head = session.mode === 'field'
-    ? `Editing ${step.title}`
-    : `${step.title} — step ${session.stepIndex + 1} of ${steps.length}`
-  const lines = []
-  if (notice) lines.push(notice, '')
-  lines.push(head, '', promptText(step, session.collection))
-  return lines.join('\n')
-}
-
-function menuKeyboard(session) {
-  const keyboard = new InlineKeyboard()
-  for (const row of chunk(visibleSteps(session.collection, session.answers), 2)) {
-    for (const step of row) keyboard.text(step.title, `field:${step.key}`)
-    keyboard.row()
-  }
-  return keyboard.text('Review and publish', 'menu:review').row().text('Cancel', 'nav:cancel')
-}
-
-function menuMessage(session, notice) {
+function formMessage(session, notice) {
   const kind = thingFor(session.collection)
-  const head = session.action === 'update'
-    ? `Editing ${kind} "${session.matchName}"`
-    : `New ${kind}`
-  const problems = validateAll(session.collection, session.answers)
+  const editing = session.action === 'update'
+  const head = editing ? `Editing ${kind} "${session.matchName}"` : `New ${kind}`
+  const intro = editing
+    ? 'Current values are filled in. Change what you need, leave the rest alone, and send the whole block back as one message.'
+    : 'Replace the value after each colon, then send the whole block back as one message.'
+  const lines = []
+  if (notice) lines.push(escapeHtml(notice), '')
+  lines.push(escapeHtml(head), '', escapeHtml(intro), '')
+  lines.push(`<pre>${escapeHtml(buildForm(session.collection, session.answers))}</pre>`)
+  lines.push('', escapeHtml('Photos come after this — they have to be sent as attachments, so they are not in the block.'))
+  return lines.join('\n')
+}
+
+function formKeyboard() {
+  return new InlineKeyboard().text('Cancel', 'nav:cancel')
+}
+
+function photosMessage(session, notice) {
+  const count = (session.answers.photos || []).length
   const lines = []
   if (notice) lines.push(notice, '')
-  lines.push(head, '', recordSummary(session.collection, session.answers), '')
-  lines.push(problems.length
-    ? `⚠️ Still needs fixing: ${problems.map((p) => p.title).join(', ')}`
-    : 'Tap a field to change just that one, then Review and publish.')
+  lines.push('Photos', '', 'Attach up to 3 photos here, or paste direct image links one per line.')
+  lines.push('', count ? `${count} added so far — tap Done when you're finished.` : 'Tap Skip if there are none.')
   return lines.join('\n')
+}
+
+function photosKeyboard(session) {
+  const count = (session.answers.photos || []).length
+  return new InlineKeyboard()
+    .text(count > 0 ? `Done (${count})` : 'Skip — no photos', 'nav:photosdone').row()
+    .text('Back to the form', 'nav:back')
+    .text('Cancel', 'nav:cancel')
 }
 
 function previewKeyboard(session) {
   return new InlineKeyboard()
     .text('Approve and publish', `approve:${session.previewId}`).row()
-    .text('Edit a field', `edit:${session.previewId}`)
+    .text('Edit the form', `edit:${session.previewId}`)
     .text('Reject', `reject:${session.previewId}`)
 }
 
@@ -168,11 +138,11 @@ function previewMessage(session, notice) {
 // Single entry point for showing whatever the session is currently waiting on.
 async function render(ctx, session, notice) {
   persist(ctx, session)
-  if (session.mode === 'walk' || session.mode === 'field') {
-    return ctx.reply(stepMessage(session, notice), { reply_markup: stepKeyboard(session) })
+  if (session.mode === 'form') {
+    return ctx.reply(formMessage(session, notice), { parse_mode: 'HTML', reply_markup: formKeyboard() })
   }
-  if (session.mode === 'menu') {
-    return ctx.reply(menuMessage(session, notice), { reply_markup: menuKeyboard(session) })
+  if (session.mode === 'photos') {
+    return ctx.reply(photosMessage(session, notice), { reply_markup: photosKeyboard(session) })
   }
   if (!session.previewId) session.previewId = randomId()
   persist(ctx, session)
@@ -198,23 +168,24 @@ const START_TEXT = 'Velocity admin bot is ready.\n\n'
   + '/editevent <name> — change one field on an event\n'
   + '/listclubs, /listevents — see what exists\n'
   + '/cancel — drop whatever you were part-way through\n\n'
-  + "I'll ask one question at a time, with buttons wherever there's a fixed set of answers. "
-  + 'Nothing publishes until you tap Approve and publish.'
+  + 'I send one block with every field in it. You fill it in, send it back in one message, '
+  + 'then add photos. Nothing publishes until you tap Approve and publish.'
 
 bot.command('start', (ctx) => ctx.reply(START_TEXT))
 
 bot.command('help', (ctx) => ctx.reply(
   'How it works:\n\n'
-  + '• /newclub or /newevent walks you through one question at a time. Tap buttons for '
-  + 'run type, surface, freebies and day; type the rest.\n'
-  + '• For the map pin: drop a Telegram location pin (paperclip → Location), paste a Google Maps '
-  + 'link, or type "25.1950, 55.2358".\n'
-  + '• For Photos: attach up to 3 photos right in the chat, or paste image links — either way, tap '
-  + 'Done when finished.\n'
-  + '• Every question has Back and Cancel. Notes and Photos also have Skip.\n'
-  + '• /editclub <name> or /editevent <name> shows the record as a list of fields — tap the one '
-  + 'you want to change, answer it, then Review and publish.\n'
-  + '• Answers are saved as you go, so a bot restart mid-entry picks up where you left off.\n\n'
+  + '• /newclub or /newevent sends one block with every field. Tap it to copy, replace the value '
+  + 'after each colon, and send the whole thing back as one message.\n'
+  + '• Leave an optional line on its placeholder text (like "optional") and it counts as blank.\n'
+  + '• For the location line: paste a Google Maps link or type "25.1950, 55.2358". You can also '
+  + 'drop a Telegram pin (paperclip → Location) and I\'ll reply with the coordinates to paste in.\n'
+  + '• Anything wrong comes back as one list, so you fix it all in a single resend.\n'
+  + '• Photos come right after the block — attach up to 3, or paste image links, then tap Done. '
+  + 'They have to be their own message, which is why they are not in the block.\n'
+  + '• /editclub <name> or /editevent <name> sends the same block pre-filled with what is already '
+  + 'stored — change what you need and send it back.\n'
+  + '• Drafts are saved, so a bot restart mid-entry picks up where you left off.\n\n'
   + 'Only the Approve and publish tap writes to GitHub.',
 ))
 
@@ -286,30 +257,16 @@ bot.command('listevents', async (ctx) => {
 
 /* ---------- answering ---------- */
 
-async function handleAnswer(ctx, session, input) {
-  const step = currentStep(session)
-  if (step.kind === 'location' && typeof input === 'string' && /^https?:\/\//i.test(input)) {
-    await ctx.replyWithChatAction('typing')
-  }
-
-  const result = await submitAnswer(session, input)
-  if (result.error) {
-    persist(ctx, session)
-    return ctx.reply(stepMessage(session, `⚠️ ${result.error}`), { reply_markup: stepKeyboard(session) })
-  }
-  return render(ctx, session)
-}
-
+// A dropped pin can't be typed into a pasted block, so it doesn't answer the
+// location line directly — the coordinates come back as copyable text instead.
 bot.on('message:location', async (ctx) => {
+  const { latitude, longitude } = ctx.message.location
+  const coords = `${Math.round(latitude * 1e6) / 1e6}, ${Math.round(longitude * 1e6) / 1e6}`
   const session = sessions.get(chatKeyOf(ctx))
-  const step = session && currentStep(session)
-  if (!step) {
-    return ctx.reply('Thanks, but nothing is waiting on a location right now. Start with /newclub or /newevent.')
+  if (!session || session.mode !== 'form') {
+    return ctx.reply(`Pin received: ${coords}`)
   }
-  if (step.kind !== 'location') {
-    return ctx.reply(`I'm on "${step.title}" right now — a pin doesn't fit here. Answer that first.`)
-  }
-  return handleAnswer(ctx, session, ctx.message.location)
+  return ctx.reply(`Pin received. Paste this into the "location:" line:\n\n${coords}`)
 })
 
 // One attached photo -> the largest size Telegram sent -> downloaded via the
@@ -319,15 +276,16 @@ bot.on('message:location', async (ctx) => {
 // rule every other field already follows.
 bot.on('message:photo', async (ctx) => {
   const session = sessions.get(chatKeyOf(ctx))
-  const step = session && currentStep(session)
-  if (!step) {
+  if (!session) {
     return ctx.reply('Thanks, but nothing is waiting on a photo right now. Start with /newclub or /newevent.')
   }
-  if (step.key !== 'photos') {
-    return ctx.reply(`I'm on "${step.title}" right now — a photo doesn't fit here. Answer that first.`)
+  if (session.mode !== 'photos') {
+    return ctx.reply(session.mode === 'form'
+      ? "I'm waiting on the filled-in block first — photos come straight after it."
+      : 'Photos are already done for this one. Use the buttons on the preview above.')
   }
   if ((session.answers.photos || []).length >= 3) {
-    return ctx.reply('Already have 3 photos — tap Done to continue, or Back to start over.')
+    return ctx.reply('Already have 3 photos — tap Done to continue.')
   }
 
   await ctx.replyWithChatAction('upload_photo')
@@ -353,13 +311,13 @@ bot.on('message:photo', async (ctx) => {
   const result = addPhoto(session, rawUrl(repoPath))
   if (result.error) {
     persist(ctx, session)
-    return ctx.reply(`⚠️ ${result.error}`, { reply_markup: stepKeyboard(session) })
+    return ctx.reply(`⚠️ ${result.error}`, { reply_markup: photosKeyboard(session) })
   }
   persist(ctx, session)
   const notice = result.count >= 3
     ? `Photo ${result.count} of 3 added — that's the max.`
     : `Photo ${result.count} of 3 added. Send another, paste a link, or tap Done.`
-  return ctx.reply(notice, { reply_markup: stepKeyboard(session) })
+  return ctx.reply(notice, { reply_markup: photosKeyboard(session) })
 })
 
 bot.on('message:text', async (ctx) => {
@@ -367,21 +325,29 @@ bot.on('message:text', async (ctx) => {
   if (!session) {
     return ctx.reply('Nothing in progress. Use /newclub, /newevent, /editclub <name> or /editevent <name>.')
   }
-  const step = currentStep(session)
-  if (!step) {
-    return ctx.reply(session.mode === 'menu'
-      ? 'Tap a field above to change it, or Review and publish.'
-      : 'Use the buttons on the preview above — Approve and publish, Edit a field, or Reject.')
+
+  // The whole record arrives in one message. Every problem is reported at
+  // once rather than one per resend.
+  if (session.mode === 'form') {
+    await ctx.replyWithChatAction('typing')
+    const { answers, errors } = await parseForm(session.collection, ctx.message.text)
+    if (errors.length) {
+      persist(ctx, session)
+      return ctx.reply(
+        `Nothing published. Fix these and send the whole block again:\n\n${errors.map((e) => `• ${e}`).join('\n')}`,
+        { reply_markup: formKeyboard() },
+      )
+    }
+    applyForm(session, answers)
+    return render(ctx, session, 'Every field checks out.')
   }
 
-  // Photos accumulate (like attachments above) rather than replacing on
-  // every message, so pasted links get their own path instead of going
-  // through submitAnswer's one-shot replace.
-  if (step.key === 'photos') {
+  // Photos accumulate rather than replacing, so pasted links append.
+  if (session.mode === 'photos') {
     const lines = ctx.message.text.split('\n').map((s) => s.trim()).filter(Boolean)
     const bad = lines.find((line) => !/^https?:\/\//i.test(line))
     if (bad) {
-      return ctx.reply(`⚠️ "${bad}" isn't a link starting with http:// or https://. Paste links, attach photos, or tap Done.`, { reply_markup: stepKeyboard(session) })
+      return ctx.reply(`⚠️ "${bad}" isn't a link starting with http:// or https://. Paste links, attach photos, or tap Done.`, { reply_markup: photosKeyboard(session) })
     }
     let result = { count: (session.answers.photos || []).length }
     for (const line of lines) {
@@ -389,14 +355,14 @@ bot.on('message:text', async (ctx) => {
       if (result.error) break
     }
     persist(ctx, session)
-    if (result.error) return ctx.reply(`⚠️ ${result.error}`, { reply_markup: stepKeyboard(session) })
+    if (result.error) return ctx.reply(`⚠️ ${result.error}`, { reply_markup: photosKeyboard(session) })
     const notice = result.count >= 3
       ? `Photo ${result.count} of 3 added — that's the max.`
       : `Photo${lines.length > 1 ? 's' : ''} added (${result.count} of 3). Send more, attach a photo, or tap Done.`
-    return ctx.reply(notice, { reply_markup: stepKeyboard(session) })
+    return ctx.reply(notice, { reply_markup: photosKeyboard(session) })
   }
 
-  return handleAnswer(ctx, session, ctx.message.text)
+  return ctx.reply('Use the buttons on the preview above — Approve and publish, Edit the form, or Reject.')
 })
 
 /* ---------- callbacks ---------- */
@@ -410,36 +376,11 @@ async function requireSession(ctx) {
   return session
 }
 
-bot.callbackQuery(/^ans:(.+)$/, async (ctx) => {
-  const session = await requireSession(ctx)
-  if (!session) return
-  const step = currentStep(session)
-  if (!step) {
-    return ctx.answerCallbackQuery({ text: 'That question has already been answered.' })
-  }
-  await ctx.answerCallbackQuery()
-  const label = step.options?.find((o) => o.value === ctx.match[1])?.label ?? ctx.match[1]
-  // Collapse the answered question into a one-line record of what was chosen.
-  await ctx.editMessageText(`✓ ${step.title}: ${label}`).catch(() => {})
-  await handleAnswer(ctx, session, ctx.match[1])
-})
-
 bot.callbackQuery('nav:back', async (ctx) => {
   const session = await requireSession(ctx)
   if (!session) return
-  const result = goBack(session)
-  if (result.error) return ctx.answerCallbackQuery({ text: result.error })
+  backToForm(session)
   await ctx.answerCallbackQuery()
-  await ctx.editMessageReplyMarkup().catch(() => {})
-  await render(ctx, session)
-})
-
-bot.callbackQuery('nav:skip', async (ctx) => {
-  const session = await requireSession(ctx)
-  if (!session) return
-  const result = skipStep(session)
-  if (result.error) return ctx.answerCallbackQuery({ text: result.error })
-  await ctx.answerCallbackQuery({ text: 'Skipped.' })
   await ctx.editMessageReplyMarkup().catch(() => {})
   await render(ctx, session)
 })
@@ -447,9 +388,21 @@ bot.callbackQuery('nav:skip', async (ctx) => {
 bot.callbackQuery('nav:photosdone', async (ctx) => {
   const session = await requireSession(ctx)
   if (!session) return
-  const result = await finishPhotos(session)
+  const result = finishPhotos(session)
   if (result.error) return ctx.answerCallbackQuery({ text: result.error })
-  await ctx.answerCallbackQuery({ text: 'Photos saved.' })
+
+  // Last line of defence: an edit loaded from an older record can carry values
+  // the form no longer accepts (e.g. the retired type "track"), and those never
+  // pass through parseForm. Catch them here rather than at publish.
+  const problems = validateAll(session.collection, session.answers)
+  if (problems.length) {
+    backToForm(session)
+    await ctx.answerCallbackQuery({ text: 'Some fields still need fixing.' })
+    await ctx.editMessageReplyMarkup().catch(() => {})
+    return render(ctx, session, `Still needs fixing: ${problems.map((p) => `${p.title} (${p.problem})`).join(', ')}`)
+  }
+
+  await ctx.answerCallbackQuery({ text: 'Saved.' })
   await ctx.editMessageReplyMarkup().catch(() => {})
   await render(ctx, session)
 })
@@ -467,39 +420,13 @@ bot.callbackQuery(/^pick:(clubs|events):(.+)$/, async (ctx) => {
   await startEdit(ctx, ctx.match[1], ctx.match[2])
 })
 
-bot.callbackQuery(/^field:(.+)$/, async (ctx) => {
-  const session = await requireSession(ctx)
-  if (!session) return
-  const result = openField(session, ctx.match[1])
-  if (result.error) return ctx.answerCallbackQuery({ text: result.error })
-  await ctx.answerCallbackQuery()
-  await ctx.editMessageReplyMarkup().catch(() => {})
-  await render(ctx, session)
-})
-
-bot.callbackQuery('menu:review', async (ctx) => {
-  const session = await requireSession(ctx)
-  if (!session) return
-  const problems = validateAll(session.collection, session.answers)
-  if (problems.length) {
-    await ctx.answerCallbackQuery({ text: 'Some fields still need an answer.' })
-    return ctx.reply(`Fix these first:\n${problems.map((p) => `• ${p.title} — ${p.problem}`).join('\n')}`)
-  }
-  await ctx.answerCallbackQuery()
-  await ctx.editMessageReplyMarkup().catch(() => {})
-  session.mode = 'preview'
-  session.stepIndex = null
-  session.previewId = null
-  await render(ctx, session)
-})
-
 bot.callbackQuery(/^edit:(.+)$/, async (ctx) => {
   const session = await requireSession(ctx)
   if (!session) return
   if (session.previewId !== ctx.match[1]) {
     return ctx.answerCallbackQuery({ text: 'That preview is out of date — use the newest one.' })
   }
-  openMenu(session)
+  backToForm(session)
   await ctx.answerCallbackQuery()
   await ctx.editMessageReplyMarkup().catch(() => {})
   await render(ctx, session)

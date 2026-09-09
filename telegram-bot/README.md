@@ -4,11 +4,14 @@ A private assistant for maintaining VelocityAE's `clubs.json` and `events.json`.
 It is separate from the GitHub Pages website and runs as its own always-on
 Node.js process (see [Deploying to Railway](#deploying-to-railway) below).
 
-There is no AI involved. The bot asks you one question at a time — with
-buttons wherever there is a fixed set of answers — then shows you a preview.
-Nothing is written until you press **Approve and publish**; that's the only
-step that creates a GitHub commit, and GitHub Pages redeploys from it
+There is no AI involved. The bot sends one block containing every field; you
+fill it in and send it back as a single message, add photos, then get a
+preview. Nothing is written until you press **Approve and publish**; that's
+the only step that creates a GitHub commit, and GitHub Pages redeploys from it
 automatically.
+
+Photos are the one thing not in the block — a Telegram attachment is always
+its own message — so they're asked for immediately after it.
 
 ## 1. Create the bot
 
@@ -75,90 +78,99 @@ tappable buttons, so you don't have to get the spelling right on a phone.
 
 ### Adding something new
 
-Send `/newclub` (or `/newevent`). The bot then asks, one message at a time:
+Send `/newclub` (or `/newevent`). The bot replies with one block containing
+every field:
 
-1. **Name** — type it exactly as it should appear on the map.
-2. **Meeting point** — the place name people recognise ("Kite Beach").
-3. **Map pin** — three ways, whichever is easiest (see below).
-4. **Run type** — buttons: Social · Tempo · Training · Long run · Pyramid session.
-5. **Surface** — buttons: Track · Beach · Road · Indoor.
-6. **Freebies** — buttons: Yes · No.
-7. **Cost** — buttons: Free · Paid. This is whether you pay to *take part*;
-   Freebies above is about free things handed out on the day. They're
-   independent — a free run can hand out free coffee, and a paid race can hand
-   out a free finisher tee.
-8. **Price** — only asked when Cost is Paid. Typed, amount with currency
-   ("AED 50"). Optional even then: tap **Skip** if the price isn't stated.
-9. **Day** (clubs) — buttons, Monday…Sunday.
-   **Date** (events) — typed, `YYYY-MM-DD`.
-10. **Start time** — typed, 24-hour `HH:MM`.
-11. **Link** — Instagram profile or booking page, must start with `https://`.
-12. **Photos** — optional, up to 3. Attach photos directly in the chat (the
-    bot downloads and stages them) or paste direct image links, one per
-    line — mix and match freely. Tap **Done** once you have what you want,
-    or **Skip** for none.
-13. **Notes** — optional; tap **Skip** if there's nothing.
+```
+name: 
+location_name: 
+location: maps link, or 25.1950, 55.2358
+type: social | tempo | training | long_run | pyramid
+surface: track | beach | road | indoor
+freebies: yes | no
+cost: free | paid
+price: only if paid, e.g. AED 50
+day: monday | tuesday | wednesday | thursday | friday | saturday | sunday
+time: HH:MM (24-hour)
+link: https://...
+notes: optional
+```
 
-Every question carries **Back** and **Cancel**; Notes, Photos and Price also
-carry **Skip** (Photos shows **Done** instead once at least one photo is
-added). The question count shown in each header ("step 4 of 12") reflects the
-questions you'll actually be asked, so it reads 13 on a paid run and 12 on a
-free one.
-Anything typed that doesn't validate gets a plain-English reason and the same
-question again — nothing else is lost. Fixed-choice fields are buttons, so an
-invalid run type or day is impossible in the first place.
+Tap the block to copy it, replace the value after each colon, and send the
+whole thing back as **one message**. Events get a `date: YYYY-MM-DD` line
+instead of `day:`.
 
-After the last question you get a preview with **Approve and publish**,
-**Edit a field**, and **Reject**. Approve creates one GitHub commit, stamps
-`last_updated` with today's Dubai date, and replies with the commit link.
-Wait about 1–2 minutes for GitHub Pages to deploy, then refresh VelocityAE.
+A few things worth knowing:
 
-### The map pin — three ways
+- **Placeholders count as blank.** Leave `notes: optional` untouched and it
+  publishes as empty, not as the literal word "optional". Same for every
+  other hint.
+- **Only the first colon splits a line**, so `https://` links and notes like
+  `Meet at 6: sharp` survive intact.
+- **`price` is ignored unless `cost` is `paid`.** No need to clear it.
+- **Everything wrong comes back in one list** — fix it all and resend the
+  block once, rather than a round trip per mistake.
+- **`freebies` vs `cost`** are independent: cost is whether you pay to *take
+  part*, freebies is free stuff handed out on the day. A free run can hand out
+  free coffee; a paid race can hand out a free finisher tee.
 
-- **Drop a Telegram pin** (easiest on mobile): paperclip → Location → send.
+Once the block validates, the bot asks for **photos** — up to 3, either
+attached directly in the chat (the bot downloads and stages them) or pasted
+as direct image links, one per line. Mix and match freely. Tap **Done** when
+finished, or **Skip** if there are none. Photos are separate because a
+Telegram attachment is always its own message and can't ride inside pasted
+text.
+
+Then you get a preview with **Approve and publish**, **Edit the form**, and
+**Reject**. Approve creates one GitHub commit, stamps `last_updated` with
+today's Dubai date, and replies with the commit link. Wait about 1–2 minutes
+for GitHub Pages to deploy, then refresh VelocityAE.
+
+### The location line — three ways
+
 - **Paste a Google Maps link**: Share → Copy link. Full links and shortened
   `maps.app.goo.gl` ones both work; the bot follows the redirect (and Google's
   consent page) to find the coordinates.
 - **Type the numbers**: `25.1950, 55.2358`. In Maps, right-click the pin and
   the coordinates are at the top of the context menu.
+- **Drop a Telegram pin** (paperclip → Location). A pin can't be typed into a
+  pasted block, so the bot replies with the coordinates as copyable text for
+  you to paste into the `location:` line.
 
-If a link doesn't yield coordinates (rare — usually an odd redirect), the bot
-says so and you can use either of the other two ways.
+Coordinates are rounded to six decimal places — roughly 10cm, far finer than
+any meeting point needs. If a link doesn't yield coordinates (rare — usually
+an odd redirect), the bot says so and you can use either of the other ways.
 
 ### Editing something that already exists
 
-`/editclub Frame Run Club` shows the whole record as a list, with one button
-per field:
+`/editclub Frame Run Club` sends the same block, pre-filled with what's
+already stored:
 
 ```
-Editing club "Frame Run Club"
-
-Name: Frame Run Club
-Meeting point: Dubai Design District
-Map pin: 25.1866742, 55.3019726
-Run type: Training
-Surface: Road
-Freebies: No
-Cost: Free
-Day: Wednesday
-Start time: 19:30
-Link: https://www.instagram.com/framerunclub
-Notes: (none)
+name: Frame Run Club
+location_name: Dubai Design District
+location: 25.1866742, 55.3019726
+type: training
+surface: road
+freebies: no
+cost: free | paid
+day: wednesday
+time: 19:30
+link: https://www.instagram.com/framerunclub
+notes: optional
 ```
 
-Tap **Start time**, send `19:00`, and you're straight back at this list — no
-re-walking the other questions. **Price** only appears in this list when Cost
-is Paid; switching a record from Paid to Free removes the question and clears
-any amount already stored, so a stale figure can't survive the edit. Tap **Review and publish** when you're
-done, then **Approve and publish** on the preview.
+Change the lines you need, leave the rest, and send it back. Any field with no
+stored value shows its placeholder instead — above, `cost` was added after this
+record was written, so it still needs answering.
 
-A field flagged `⚠️` is one the bot can't publish as-is. That happens with
-older records: `LFG` still stores the retired run type `track`, so editing it
-asks you to pick one of the five real types before publishing. The same applies
-to **Cost** — it was added after the first records were written, so the first
-edit of any of those asks you to set Free or Paid before it will publish. Fields the bot
-no longer asks about (the retired `pace`) are kept in the JSON exactly as they
-were.
+Fields the bot no longer asks about (the retired `pace`) are kept in the JSON
+exactly as they were — the edit merges over the stored record rather than
+replacing it.
+
+Older records can hold values the form no longer accepts: `LFG` still stores
+the retired run type `track`, which isn't one of the five options. Those are
+caught before the preview and sent back to the form for fixing.
 
 ### Run types
 
@@ -169,9 +181,10 @@ The five types match the filter chips in the live app exactly
 
 ## Drafts
 
-Answers are written to a small JSON file after every step and deleted the
+Answers are written to a small JSON file whenever they change and deleted the
 moment you publish or cancel. If the process restarts mid-entry, the bot picks
-the session back up and re-asks the question you were on.
+the session back up and re-sends whatever it was waiting on — the form
+pre-filled with what you'd already entered, the photos prompt, or the preview.
 
 **This protects against restarts and crashes, not redeploys.** Railway gives
 each deploy a fresh filesystem, so anything half-finished when you push new
@@ -205,14 +218,52 @@ This keeps the bot running without your computer staying on.
    pick this repository.
 3. Railway will try to build from the repo root — open the service's
    **Settings** and set **Root Directory** to `telegram-bot`. It auto-detects
-   Node and runs `npm install` then `npm start`.
+   Node and runs `npm install` then `npm start`. No Dockerfile, Procfile or
+   `railway.json` is needed; `package.json` (including `engines.node >= 20`)
+   is the whole build contract.
 4. In the service's **Variables** tab, add `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_ADMIN_CHAT_ID`, `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, and
-   `GITHUB_BRANCH` — same values as your local `.env`. Do not commit `.env`
-   itself; Railway's variables are separate from the repo.
-5. Deploy. Check the **Logs** tab for `Velocity Telegram bot is running.`
-6. Send `/start` to your bot from Telegram to confirm it responds.
+   `TELEGRAM_ADMIN_CHAT_ID`, `GITHUB_TOKEN`, and `GITHUB_REPOSITORY`.
+   `GITHUB_BRANCH` is optional and defaults to `main`; `DRAFTS_FILE` is
+   optional too (see [Drafts](#drafts)). Use the same values as your local
+   `.env` — do not commit `.env` itself; Railway's variables are separate
+   from the repo.
+5. **Stop any copy running on your own machine first** — see below.
+6. Deploy. Check the **Logs** tab for `Velocity Telegram bot is running.`
+7. Send `/start` to your bot from Telegram to confirm it responds.
 
-The bot uses long-polling (not a webhook), so it doesn't need an HTTP port
-or a public URL — Railway just needs to keep the process alive, which the
-free trial covers for a low-traffic personal bot like this one.
+### Only one copy can run at a time
+
+Telegram allows a single long-polling client per bot token. If the bot is
+running on your laptop *and* on Railway, Telegram rejects the second one with
+`409 Conflict: terminated by other getUpdates request`, and the two will trade
+messages unpredictably — some of your replies reaching one process, some the
+other.
+
+So before deploying, stop the local one (`Ctrl-C`, or `pkill -f "node
+src/index.js"`). To go back to local development later, pause or delete the
+Railway service first. A 409 in either set of logs means both are live.
+
+### No HTTP port is expected
+
+The bot long-polls rather than serving a webhook, so it needs no port and no
+public URL. Railway may still show a "no open ports detected" notice on the
+service — that's expected for a worker process and not a failure. Don't add a
+healthcheck; there's nothing to answer it.
+
+A low-traffic personal bot like this sits comfortably inside the free trial's
+usage.
+
+## Tests
+
+```bash
+npm test
+```
+
+Covers form rendering, parsing, validation, the conditional price, legacy
+records, and the session state machine. Node's built-in runner, no test
+dependency. Everything runs offline — no Telegram, no GitHub, no secrets — so
+it's safe to run anywhere, including CI.
+
+`npm run form` prints the blank block for both collections. Run it after
+changing any field and update `claude-skill/SKILL.md` if the output no longer
+matches the two code blocks in there.

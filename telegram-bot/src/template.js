@@ -1,6 +1,11 @@
-/* Field definitions, validation, and the guided step machine.
+/* Field definitions, validation, and the paste-back form.
    Deliberately free of any grammy import so it can be unit-tested (and
-   reasoned about) on its own — index.js owns all Telegram I/O. */
+   reasoned about) on its own — index.js owns all Telegram I/O.
+
+   The STEP_* objects below are the single source of truth for every field's
+   label, options and validation rules. They were originally walked one
+   question at a time; the flow now renders them all at once as a "key: value"
+   block (see buildForm/parseForm), but the definitions did not change. */
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
@@ -183,17 +188,15 @@ export function stepsFor(collection) {
   return collection === 'clubs' ? CLUB_STEPS : EVENT_STEPS
 }
 
-/* The list the step machine actually walks. A step with a `when` predicate
+/* The steps that actually apply to a record. A step with a `when` predicate
    drops out when the predicate is false against the answers so far, so Price
-   simply doesn't exist as a question on a free run.
+   simply doesn't exist on a free run.
 
-   Every piece of index math — stepIndex, "step N of M", Back, the field menu,
-   validation — must go through this and never through stepsFor(), or the
-   indices refer to two different lists. Because the list is derived from the
-   current answers each time it's read, changing Cost re-shapes it immediately:
-   answering "free" advances past where Price would have been, and switching a
-   record from paid to free stops validating (and stops showing) a Price that
-   is no longer asked for. */
+   Because the list is derived from the current answers each time it's read,
+   changing Cost re-shapes it immediately: switching a record from paid to free
+   stops validating (and stops showing) a Price that is no longer asked for.
+   The preview summary and the pre-publish check both go through this, so a
+   stale Price can never reach a published record. */
 export function visibleSteps(collection, answers) {
   const seen = answers || {}
   return stepsFor(collection).filter((step) => (step.when ? step.when(seen) : true))
@@ -203,16 +206,8 @@ export function recordKeys(collection) {
   return collection === 'clubs' ? CLUB_KEYS : EVENT_KEYS
 }
 
-export function fieldsFor(collection) {
-  return stepsFor(collection).filter((step) => step.field).map((step) => step.field)
-}
-
 export function thingFor(collection) {
   return collection === 'clubs' ? 'club' : 'event'
-}
-
-export function promptText(step, collection) {
-  return step.prompt.replace(/\{thing\}/g, thingFor(collection))
 }
 
 /* ---------- maps links ---------- */
@@ -350,33 +345,123 @@ export async function resolveLocationInput(input) {
   return { lat: round6(lat), lng: round6(lng) }
 }
 
-// Resolves one step's raw input into the record values it fills.
-export async function applyStepInput(step, input) {
-  if (step.kind === 'location') {
-    const result = await resolveLocationInput(input)
-    if (result.error) return { error: result.error }
-    return { values: { lat: result.lat, lng: result.lng } }
-  }
+/* ---------- the form ----------
+   Every text field is asked at once as a "key: value" block that Taha edits
+   and sends back in one message. Photos can't ride along in pasted text —
+   a Telegram attachment is always its own message — so they're collected
+   immediately afterwards, and are the one field excluded from the block.
 
-  if (step.kind === 'choice') {
-    const raw = String(input ?? '').trim().toLowerCase()
-    const option = step.options.find((o) => o.value === raw || o.label.toLowerCase() === raw)
-    if (!option) {
-      return { error: `Tap one of the buttons, or type one of: ${step.options.map((o) => o.label).join(', ')}` }
-    }
-    return { values: { [step.key]: option.value } }
-  }
+   The STEP_* definitions above stay the single source of truth for labels,
+   options and validation; this section only changes how they're presented. */
 
-  const result = validateField(step.field, input)
-  if (result.error) return { error: `${step.title} — ${result.error}` }
-  return { values: { [step.key]: result.value } }
+const PHOTO_KEY = 'photos'
+
+// Price is deliberately included even though visibleSteps() would drop it on a
+// blank form (no cost answered yet) — it has to be on the page for Taha to
+// fill in. parseForm() re-applies the `when` predicate, so a price typed
+// against a free run is simply ignored rather than rejected.
+export function formSteps(collection) {
+  return stepsFor(collection).filter((step) => step.key !== PHOTO_KEY)
 }
 
-/* ---------- session (the step machine) ----------
+// The greyed-out placeholder after each colon. Also does double duty as a
+// sentinel: parseForm() treats a value still exactly equal to its hint as
+// "left blank", so an untouched `notes: optional` doesn't publish the literal
+// word "optional".
+export function formHint(step) {
+  if (step.kind === 'choice') return step.options.map((o) => o.value).join(' | ')
+  if (step.kind === 'boolean') return 'yes | no'
+  if (step.kind === 'location') return 'maps link, or 25.1950, 55.2358'
+  if (step.key === 'date') return 'YYYY-MM-DD'
+  if (step.key === 'time') return 'HH:MM (24-hour)'
+  if (step.key === 'link') return 'https://...'
+  if (step.key === 'price') return 'only if paid, e.g. AED 50'
+  if (step.optional) return 'optional'
+  return ''
+}
+
+function formValue(step, answers) {
+  if (step.kind === 'location') {
+    const { lat, lng } = answers
+    return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) ? `${lat}, ${lng}` : ''
+  }
+  const value = answers[step.key]
+  if (value === undefined || value === null || value === '') return ''
+  if (step.kind === 'boolean') return value ? 'yes' : 'no'
+  return String(value)
+}
+
+// Blank for a new record, pre-filled for an edit. Either way every line is
+// present, so the reply is always a complete record.
+export function buildForm(collection, answers) {
+  const seen = answers || {}
+  return formSteps(collection)
+    .map((step) => `${step.key}: ${formValue(step, seen) || formHint(step)}`)
+    .join('\n')
+}
+
+/* Parses a sent-back block into answers. Collects *every* problem rather than
+   stopping at the first, so one reply lists everything that needs fixing
+   instead of trickling errors out one resend at a time. */
+export async function parseForm(collection, text) {
+  const raw = {}
+  for (const line of String(text || '').split('\n')) {
+    const idx = line.indexOf(':')
+    if (idx === -1) continue
+    const key = line.slice(0, idx).trim().toLowerCase()
+    // Only the first colon splits — URLs and "AED 50: early bird" survive.
+    raw[key] = line.slice(idx + 1).trim()
+  }
+
+  const answers = {}
+  const errors = []
+
+  for (const step of formSteps(collection)) {
+    // Re-applied against answers built so far, so Price disappears the moment
+    // Cost parses as "free" — same rule the preview and publish paths use.
+    if (step.when && !step.when(answers)) continue
+
+    let value = raw[step.key]
+    if (value === undefined) {
+      if (!step.optional) errors.push(`${step.title} — the "${step.key}:" line is missing`)
+      else answers[step.key] = ''
+      continue
+    }
+
+    if (value === formHint(step)) value = ''
+    if (!value) {
+      if (!step.optional) errors.push(`${step.title} — needs a value`)
+      else answers[step.key] = ''
+      continue
+    }
+
+    if (step.kind === 'location') {
+      const resolved = await resolveLocationInput(value)
+      if (resolved.error) errors.push(`${step.title} — ${resolved.error}`)
+      else Object.assign(answers, { lat: resolved.lat, lng: resolved.lng })
+      continue
+    }
+
+    if (step.kind === 'choice') {
+      const normalized = value.toLowerCase()
+      const option = step.options.find((o) => o.value === normalized || o.label.toLowerCase() === normalized)
+      if (!option) errors.push(`${step.title} — must be one of: ${step.options.map((o) => o.value).join(', ')}`)
+      else answers[step.key] = option.value
+      continue
+    }
+
+    const result = validateField(step.field, value)
+    if (result.error) errors.push(`${step.title} — ${result.error}`)
+    else answers[step.key] = result.value
+  }
+
+  return { answers, errors }
+}
+
+/* ---------- session ----------
    mode:
-     'walk'    — answering the questions in order (stepIndex points at one)
-     'field'   — answering a single question reached from the field menu
-     'menu'    — the field menu (edit / review before preview)
+     'form'    — waiting for the filled-in block to come back
+     'photos'  — waiting for attachments, or Done/Skip
      'preview' — waiting on the Approve and publish tap */
 
 export function answersFromRecord(collection, record) {
@@ -389,122 +474,47 @@ export function answersFromRecord(collection, record) {
 }
 
 export function createSession({ collection, action, matchName = null, record = null }) {
-  const editing = action === 'update'
   return {
     collection,
     action,
     matchName,
-    answers: answersFromRecord(collection, record),
     // Everything the record already had that we no longer ask about (e.g. the
     // retired `pace` field) is preserved through publish, not through here.
-    stepIndex: editing ? null : 0,
-    mode: editing ? 'menu' : 'walk',
+    answers: answersFromRecord(collection, record),
+    mode: 'form',
     previewId: null,
+    pendingUploads: [],
     savedAt: Date.now(),
   }
 }
 
-export function currentStep(session) {
-  if (session.mode !== 'walk' && session.mode !== 'field') return null
-  return visibleSteps(session.collection, session.answers)[session.stepIndex] || null
-}
-
-export function stepNumber(session) {
-  const steps = visibleSteps(session.collection, session.answers)
-  return { index: session.stepIndex, total: steps.length }
-}
-
-function afterAnswer(session) {
-  if (session.mode === 'field') {
-    session.mode = 'menu'
-    session.stepIndex = null
-    return
-  }
-  const steps = visibleSteps(session.collection, session.answers)
-  if (session.stepIndex + 1 >= steps.length) {
-    session.mode = 'preview'
-    session.stepIndex = null
-    return
-  }
-  session.stepIndex += 1
-}
-
-export async function submitAnswer(session, input) {
-  const step = currentStep(session)
-  if (!step) return { error: 'There is no question waiting for an answer right now.' }
-
-  const result = await applyStepInput(step, input)
-  if (result.error) return { error: result.error }
-
-  Object.assign(session.answers, result.values)
+// Merges a parsed form over whatever the session already held, so photos
+// attached before an edit survive a re-send of the block.
+export function applyForm(session, answers) {
+  Object.assign(session.answers, answers)
+  session.mode = 'photos'
   session.previewId = null
-  afterAnswer(session)
-  return { ok: true, mode: session.mode }
 }
 
-// Photos accumulate one at a time (each attached photo, or each pasted link)
-// instead of arriving as a single typed answer — so unlike every other field,
-// there's no one-shot submitAnswer() for it. addPhoto() appends and stays on
-// the step; finishPhotos() commits whatever's accumulated (possibly none) and
-// advances, reusing submitAnswer's own validation/advance logic.
+export function backToForm(session) {
+  session.mode = 'form'
+  session.previewId = null
+}
+
 export function addPhoto(session, url) {
-  const step = currentStep(session)
-  if (!step || step.key !== 'photos') return { error: 'Not currently on the photos question.' }
+  if (session.mode !== 'photos') return { error: 'Not on the photos step right now.' }
   const existing = Array.isArray(session.answers.photos) ? session.answers.photos : []
-  if (existing.length >= 3) return { error: 'Already have 3 photos — tap Done to continue, or Back to start over.' }
+  if (existing.length >= 3) return { error: 'Already have 3 photos — tap Done to continue.' }
   session.answers.photos = [...existing, url]
   session.previewId = null
   return { ok: true, count: session.answers.photos.length }
 }
 
-export async function finishPhotos(session) {
-  const step = currentStep(session)
-  if (!step || step.key !== 'photos') return { error: 'Not currently on the photos question.' }
-  return submitAnswer(session, session.answers.photos || [])
-}
-
-export function skipStep(session) {
-  const step = currentStep(session)
-  if (!step) return { error: 'There is no question waiting right now.' }
-  if (!step.optional) return { error: `${step.title} is required — it can't be skipped.` }
-  session.answers[step.key] = ''
+export function finishPhotos(session) {
+  if (session.mode !== 'photos') return { error: 'Not on the photos step right now.' }
+  if (!Array.isArray(session.answers.photos)) session.answers.photos = []
+  session.mode = 'preview'
   session.previewId = null
-  afterAnswer(session)
-  return { ok: true, mode: session.mode }
-}
-
-// Back: from a menu-opened field, back to the menu; otherwise one question up.
-export function goBack(session) {
-  if (session.mode === 'field') {
-    session.mode = 'menu'
-    session.stepIndex = null
-    return { ok: true, mode: session.mode }
-  }
-  if (session.mode === 'preview') {
-    session.mode = 'walk'
-    session.stepIndex = visibleSteps(session.collection, session.answers).length - 1
-    session.previewId = null
-    return { ok: true, mode: session.mode }
-  }
-  if (session.mode === 'walk' && session.stepIndex > 0) {
-    session.stepIndex -= 1
-    return { ok: true, mode: session.mode }
-  }
-  return { error: 'This is the first question — /cancel to start over.' }
-}
-
-export function openField(session, key) {
-  const index = visibleSteps(session.collection, session.answers).findIndex((step) => step.key === key)
-  if (index === -1) return { error: 'Unknown field.' }
-  session.mode = 'field'
-  session.stepIndex = index
-  session.previewId = null
-  return { ok: true }
-}
-
-export function openMenu(session) {
-  session.mode = 'menu'
-  session.stepIndex = null
   return { ok: true }
 }
 

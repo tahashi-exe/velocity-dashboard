@@ -44,7 +44,7 @@ function isUsable(session) {
     && typeof session === 'object'
     && ['clubs', 'events'].includes(session.collection)
     && ['add', 'update'].includes(session.action)
-    && ['walk', 'field', 'menu', 'preview'].includes(session.mode)
+    && ['form', 'photos', 'preview'].includes(session.mode)
     && session.answers && typeof session.answers === 'object'
     && (typeof session.savedAt !== 'number' || Date.now() - session.savedAt < MAX_AGE_MS),
   )
