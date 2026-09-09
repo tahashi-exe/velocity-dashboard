@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "discover-chat-id": "node src/discover-chat-id.js"
+    "test": "node --test",
+    "discover-chat-id": "node src/discover-chat-id.js",
+    "form": "node src/print-form.js"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
