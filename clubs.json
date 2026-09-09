@@ -72,5 +72,24 @@
     "link": "https://www.instagram.com/kinclub.ae?igsi=eWk0NHV4MDhjNXNt",
     "notes": "",
     "last_updated": "2026-08-26"
+  },
+  {
+    "name": "Spartan Run Club",
+    "location_name": "Bluewaters, Dubai",
+    "lat": 25.079388,
+    "lng": 55.123719,
+    "type": "social",
+    "surface": "road",
+    "freebies": true,
+    "cost": "free",
+    "price": "",
+    "day": "saturday",
+    "time": "06:00",
+    "link": "https://www.instagram.com/spartanmiddleeast?stkn=MThjc2p1ZGd2MTMwcQ==",
+    "photos": [
+      "https://raw.githubusercontent.com/tahashi-exe/velocity-dashboard/main/club-photos/s0ydfy20.jpg"
+    ],
+    "notes": "Run with SRC and Drinks plus socials at Joe and the Juice after",
+    "last_updated": "2026-09-09"
   }
 ]
