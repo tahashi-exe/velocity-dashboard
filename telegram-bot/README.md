@@ -210,26 +210,54 @@ if you ever want drafts to survive deploys too.
 
 ## Deploying to Railway
 
-This keeps the bot running without your computer staying on.
+This keeps the bot running without your computer staying on. It's live now as
+the `velocity-telegram-bot` project.
 
-1. Push this repo to GitHub if you haven't already (it already is, at
-   `tahashi-exe/velocity-dashboard`).
-2. In [Railway](https://railway.app), **New Project → Deploy from GitHub repo**,
-   pick this repository.
-3. Railway will try to build from the repo root — open the service's
-   **Settings** and set **Root Directory** to `telegram-bot`. It auto-detects
-   Node and runs `npm install` then `npm start`. No Dockerfile, Procfile or
-   `railway.json` is needed; `package.json` (including `engines.node >= 20`)
-   is the whole build contract.
-4. In the service's **Variables** tab, add `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_ADMIN_CHAT_ID`, `GITHUB_TOKEN`, and `GITHUB_REPOSITORY`.
-   `GITHUB_BRANCH` is optional and defaults to `main`; `DRAFTS_FILE` is
-   optional too (see [Drafts](#drafts)). Use the same values as your local
-   `.env` — do not commit `.env` itself; Railway's variables are separate
-   from the repo.
-5. **Stop any copy running on your own machine first** — see below.
-6. Deploy. Check the **Logs** tab for `Velocity Telegram bot is running.`
-7. Send `/start` to your bot from Telegram to confirm it responds.
+> **`git push` does not deploy the bot.** The service is **not** connected to
+> a GitHub repo — it's deployed by uploading this directory with the Railway
+> CLI. Pushing to `main` updates the website (GitHub Pages) but leaves the bot
+> running whatever was last uploaded. This has already caused one round of
+> "why is the bot still on the old version?", so it's worth remembering.
+
+### Shipping a change
+
+From this directory:
+
+```bash
+railway up
+```
+
+That uploads the folder, builds it, and swaps the container over. Files listed
+in `.gitignore` — including `.env` — are excluded, so secrets stay out of the
+upload; Railway supplies them from its own **Variables** instead.
+
+Confirm it took with `railway status` (the active deployment's timestamp should
+be the moment you deployed) and `railway logs` (look for
+`Velocity Telegram bot is running.`). Then send `/newclub` in Telegram: the new
+flow replies with one copy-paste block, the old one asked "Name — step 1 of 12".
+
+Expect a single `409` in the logs right after a deploy — the outgoing container
+drains while the new one starts, so for a second or two both are polling. It
+restarts itself and settles. A 409 that keeps repeating means something else is
+polling; see below.
+
+### Variables
+
+Set in the service's **Variables** tab, not in the repo: `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_ADMIN_CHAT_ID`, `GITHUB_TOKEN`, `GITHUB_REPOSITORY`. `GITHUB_BRANCH`
+is optional and defaults to `main`; `DRAFTS_FILE` is optional too (see
+[Drafts](#drafts)).
+
+Railway auto-detects Node and runs `npm install` then `npm start`. No
+Dockerfile, Procfile or `railway.json` is needed — `package.json` (including
+`engines.node >= 20`) is the whole build contract.
+
+### If you'd rather push-to-deploy
+
+Connect the service to the GitHub repo in Railway's **Settings → Source**, and
+set **Root Directory** to `telegram-bot` so it builds the right folder. After
+that `git push` deploys the bot as well as the site, and `railway up` is no
+longer needed.
 
 ### Only one copy can run at a time
 
@@ -239,9 +267,16 @@ running on your laptop *and* on Railway, Telegram rejects the second one with
 messages unpredictably — some of your replies reaching one process, some the
 other.
 
-So before deploying, stop the local one (`Ctrl-C`, or `pkill -f "node
-src/index.js"`). To go back to local development later, pause or delete the
-Railway service first. A 409 in either set of logs means both are live.
+So before running it locally, pause the Railway service — otherwise the two
+kill each other in a loop: each restart displaces the other's poll, which
+crashes it, which restarts it. Stop a local copy with `Ctrl-C` or
+`pkill -f "node src/index.js"`. A 409 repeating in either set of logs means
+both are live.
+
+Note that a plain `getUpdates` call can't detect this — a fresh call always
+*wins* the slot, so it succeeds whether or not something else is polling. Only
+a long-lived poll reveals a competitor, by being displaced. `railway logs` is
+the quicker check.
 
 ### No HTTP port is expected
 
