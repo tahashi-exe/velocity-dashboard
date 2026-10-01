@@ -29,7 +29,9 @@ mocks only** — nothing syncs, nothing is shared between devices.
 - **Fonts:** Bricolage Grotesque (display — wordmark, hero, panel titles,
   calendar date numerals) + Plus Jakarta Sans (body/UI), via Google Fonts.
   Referenced through `--font-display` / `--font-body` in `:root`.
-- **Theme:** Light background, purple (`#6D28D9`) + lime green (`#A3E635`)
+- **Theme:** Light background, purple (`#6D28D9`) + lime green (`#A3E635`).
+  The legal pages use a standalone `legal.css` mirroring the same tokens,
+  because `style.css` locks `html`/`body` to `overflow: hidden` for the map
 - **PWA:** installable to the iOS home screen — `manifest.webmanifest` plus a
   deliberately minimal `sw.js` (installability only; **no offline caching**)
 
@@ -46,8 +48,10 @@ mocks only** — nothing syncs, nothing is shared between devices.
 ├── landing-map.js      # LandingMap: decorative animated map behind the hero
 ├── sw.js               # Service worker — installability only, caches nothing
 ├── manifest.webmanifest, icon*.png/svg
+├── privacy.html, terms.html, guidelines.html   # Static legal pages (+ legal.css)
 ├── clubs.json          # Recurring run clubs
 ├── events.json         # One-off events
+├── supabase/           # Backend schema migration + JSON→SQL seed script (not live yet)
 ├── PRD.md / TECHNICAL.md   # v2 product plan + schema/backend design
 ├── README.md           # Public-facing project description
 └── CLAUDE.md           # This file
@@ -256,7 +260,14 @@ decision, not an oversight.
       row, and the "Free" filter chip
 - [ ] Backfill `cost` on the 5 existing records (all currently unknown, so the
       Free chip matches nothing until then)
-- [ ] Supabase backend, accounts/sign-in, synced RSVPs
+- [x] Privacy Policy / Terms / Community Guidelines pages, linked from the
+      landing page and the ⋯ menu. Friends-preview drafts: no named legal
+      owner yet and not legally reviewed (`TECHNICAL.md` §11 item 6)
+- [x] Supabase schema (`supabase/migrations/`) + seed script, tested against
+      Postgres (PGlite) incl. RLS and account deletion. **Not applied to any
+      live project yet**; nothing in the app reads from it
+- [ ] Supabase backend, accounts/sign-in, synced RSVPs — sign-in UX is in
+      `PRD.md` §4.8b, the pre-switch checklist in `TECHNICAL.md` §11
 - [ ] Freebies page
 - [ ] Glowing GPX routes (pending GPX files from Taha)
 

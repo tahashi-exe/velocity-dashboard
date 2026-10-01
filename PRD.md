@@ -112,14 +112,58 @@ Four-state RSVP per user per event. Persists per account and syncs across
 devices, which is what pulls accounts (§4.8b) into this PRD.
 
 ### 4.8b Accounts & sign-in
-Traditional email + password account creation is the primary path, with
-Apple and Google social sign-in offered as additional one-tap options on top
-— all three available side by side, not a single forced method.
+Sign-in should take one tap. The options are **Continue with Google** and an
+**email code**: type your email, get a 6-digit code, type it in, with no password.
+**Continue with Apple** is added once the Apple Developer account exists. This
+replaces the earlier email + password plan (see `TECHNICAL.md` §5 for why a code
+rather than a link).
 
-Once accounts exist, today's local-only onboarding preferences
-(`velocity_prefs` in `localStorage`) move to a synced profile instead — same
-fields (pace/type interest, freebies interest), just synced across devices
-instead of per-device.
+**Opening the app never asks anyone to sign in.** There's no wall, popup or cookie
+banner. Guests get the full app: landing, onboarding, map, list, filters, run
+details, Run Now, the calendar, Explore, "Register here" and "Open in Maps".
+
+The sign-in sheet opens only when a guest taps something that has to be saved
+to an account:
+
+| Guest taps… | Sheet headline |
+|---|---|
+| Going / Interested / Not interested / Not going | "Sign in to save your RSVP for *{run}*" |
+| Add to calendar | "Sign in to add *{run}* to your calendar" |
+| My runs (calendar) | "Sign in to see your runs" |
+| Sign in (⋯ menu) | "Sign in to Velocity" |
+
+The sheet slides up from the bottom. It shows the Google button, then "or" with an
+email field, then fine print: *"By continuing you agree to the Terms and Community
+Guidelines and acknowledge the Privacy Policy"*, with each linked. That fine print
+is the consent record, stored with the Terms version on the profile. **Not now**
+closes the sheet and leaves the guest exactly where they were.
+
+After signing in, the action they tapped completes by itself, followed by a
+toast such as "Marked going ✓". First sign-in only:
+- Google users get their name and photo filled in.
+- Email-code users get one optional "What should we call you?" step.
+- Any RSVPs and prefs saved on the device come across into the account.
+
+Signed-in users see **Account** in the ⋯ menu:
+- Edit name and prefs.
+- **Download my data**, a JSON file of their profile and RSVPs.
+- **Delete account**, which erases everything immediately.
+- Sign out.
+
+Onboarding preferences (`velocity_prefs`) stay on the device for guests and sync
+to the profile once signed in.
+
+**My runs** is a toggle on the calendar that shows only the runs the user
+marked Going (solid) or Interested (outlined), plus "Add all to calendar". It's
+only available when signed in.
+
+Other people only ever see anonymous totals ("8 going · 5 interested"). Going
+in Velocity doesn't register anyone with the club, and the RSVP UI says so next to
+"Register here".
+
+**Privacy pages** are `privacy.html`, `terms.html` and `guidelines.html`. They're
+static and linked from the landing page and the ⋯ menu. Google's sign-in setup
+requires them to be public.
 
 ### 4.9 Calendar view
 A new view alongside the map/list: a weekly (or monthly, per the §4.4
