@@ -30,6 +30,7 @@ const VariantA = (() => {
               <button type="button" class="more-menu-item" id="cal-btn">&#128197; Calendar</button>
               <button type="button" class="more-menu-item" id="explore-btn">&#129517; Explore</button>
               <button type="button" class="more-menu-item" id="profile-btn">&#128100; Profile</button>
+              <a class="more-menu-item" href="privacy.html">&#128196; Privacy &amp; terms</a>
             </div>
           </div>
         </div>

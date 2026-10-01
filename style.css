@@ -482,6 +482,20 @@ button:active {
 
 .landing-cta:hover { transform: translateY(-2px); }
 
+/* In the hero's flow rather than pinned to the bottom edge, where it
+   collided with the landing map's attribution control on short screens. */
+.landing-legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 18px;
+  margin-top: 26px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.landing-legal a { color: rgba(255, 255, 255, 0.72); text-decoration: none; }
+.landing-legal a:hover { color: white; }
+
 @media (max-width: 480px) {
   .brand-name { display: none; }
   .panel { width: 100%; }
@@ -1145,6 +1159,8 @@ button:active, .rsvp-btn:active, .scope-btn:active {
   color: var(--text);
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
   font-family: inherit;
 }
 .more-menu-item:hover { background: var(--purple-tint); }
