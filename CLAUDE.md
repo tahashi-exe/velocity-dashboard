@@ -68,7 +68,7 @@ Everything below describes static mode unless it says otherwise; "Accounts
 ├── privacy.html, terms.html, guidelines.html   # Static legal pages (+ legal.css)
 ├── clubs.json          # Recurring run clubs
 ├── events.json         # One-off events
-├── supabase/           # Backend schema migration + JSON→SQL seed script (not live yet)
+├── supabase/           # Schema migration, JSON→SQL seed script, SETUP.md (dashboard steps)
 ├── PRD.md / TECHNICAL.md   # v2 product plan + schema/backend design
 ├── README.md           # Public-facing project description
 └── CLAUDE.md           # This file
@@ -251,13 +251,32 @@ On when `config.js` returns a `backend` (today: `localhost` → `velocity-dev`).
 Hand-edit `clubs.json` / `events.json` in GitHub's web editor and commit —
 Pages rebuilds in about a minute.
 
-**Telegram bot** (`/telegram-bot`): a private always-on Node process (grammy),
-separate from this static site, deliberately with **no AI/API dependency**.
+**Telegram bot** (`/telegram-bot`): a private admin bot (grammy), separate
+from this static site, deliberately with **no AI/API dependency**. It runs as
+a Supabase Edge Function that Telegram calls by webhook.
 It sends every field at once as a `key: value` block (`buildForm()` in
 `template.js`), which Taha fills in and sends back as one message
 (`parseForm()`), then asks for photos, then shows a preview. Only an explicit
 **Approve and publish** tap commits, via GitHub's Contents API
 (`telegram-bot/src/github.js`).
+
+That same tap then mirrors the record into the `runs` table
+(`telegram-bot/src/supabase.js`), so backend mode sees what the bot publishes.
+GitHub stays the bot's source of truth and is written first; a failed database
+write is retried by tapping Approve again, without a second commit.
+`telegram-bot/src/run-row.js` is the single record → row mapping, shared with
+`supabase/seed-from-json.mjs`, and it must keep producing the same slug as
+`data.js`'s `toRun()`.
+
+All of the bot's behaviour is in `telegram-bot/src/bot.js`, which uses nothing
+Node-only and is handed grammy by its entry point: `edge.ts` on Supabase
+(webhook, drafts in the `bot_sessions` table) or `index.js` under Node (long
+polling, drafts in a file, for local runs). **Nothing may rely on memory
+between two messages** — the Edge Function can serve each one from a fresh
+instance, and `test/bot.test.js` builds a new bot per message to hold that
+line. The function loads the code from GitHub at one pinned commit, so a push
+alone doesn't change the running bot (`telegram-bot/README.md`, "Shipping a
+change").
 
 Session modes are `form` → `photos` → `preview`. Photos are the one field
 excluded from the block, because a Telegram attachment is always its own
@@ -277,11 +296,11 @@ coordinates as copyable text instead. `/editclub <name>` sends the same block
 pre-filled from the stored record, and publish merges over that record so
 fields the bot no longer asks about (the retired `pace`) survive untouched.
 
-In-progress answers persist to disk (`telegram-bot/src/drafts.js`) so a
-restart resumes — though Railway's filesystem is ephemeral across *redeploys*.
-Note `drafts.js` whitelists valid session modes; it must be updated in step
-with any mode change or every saved draft is silently discarded on boot.
-Deployed on Railway (root directory `telegram-bot`) — see
+In-progress answers are saved after every message
+(`telegram-bot/src/session-store.js` on Supabase, `drafts.js` locally), so an
+entry can be left half-finished and picked up later. Note `drafts.js`
+whitelists valid session modes; it must be updated in step with any mode
+change or every locally saved draft is silently discarded on boot. See
 `telegram-bot/README.md`.
 
 Keep the bot deterministic. The no-AI constraint is a deliberate design
@@ -337,10 +356,19 @@ decision, not an oversight.
       in the Supabase email templates) and Google (`TECHNICAL.md` §11 item 5)
 - [ ] Custom SMTP so sign-in emails come from Velocity, not "Supabase Auth",
       and can reach people outside the Supabase team (`TECHNICAL.md` §11 item 4)
-- [ ] Telegram bot writes to Supabase instead of the JSON files
-      (`TECHNICAL.md` §8) — required before cutover
-- [ ] Prod Supabase project, then cutover: set `PROD` in `config.js`
-      (`TECHNICAL.md` §11 item 9)
+- [x] Telegram bot mirrors each publish into Supabase as well as the JSON
+      files (`TECHNICAL.md` §8), and is rebuilt to run as a Supabase Edge
+      Function instead of on Railway, whose trial expired (every deployment
+      there has been removed since 2026-09-09, so the bot has been offline).
+      Tested offline end to end; the `bot_sessions` table is applied
+- [ ] Bot not live yet: needs its four secrets set in Supabase
+      (`supabase/SETUP.md` Part 5), then the real function deployed and its
+      webhook registered. A placeholder probe is deployed under the function
+      name `telegram-bot` meanwhile
+- [ ] Cutover: for the friends phase the one project (`velocity-dev`) is the
+      live one, so this is re-running the seed and setting `PROD` in
+      `config.js`, once the bot above is deployed and sign-in is set up
+      (`supabase/SETUP.md`)
 - [ ] Sign in with Apple (needs an Apple Developer account)
 - [ ] Freebies page
 - [ ] Glowing GPX routes (pending GPX files from Taha)

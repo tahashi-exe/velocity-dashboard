@@ -186,10 +186,23 @@ compared to the grace-period approach considered earlier.
 ## 8. Telegram bot changes
 
 The bot's job stays the same (deterministic template → preview → explicit
-approve, no AI) but its publish step changes: `telegram-bot/src/github.js`
-currently commits directly to `clubs.json`/`events.json` via GitHub's
-Contents API. That gets replaced with a Supabase write (insert/update on
-`runs`) so admin data entry keeps working once the backend is in place.
+approve, no AI). Its publish step now does two writes: the commit to
+`clubs.json`/`events.json` through GitHub's Contents API as before, then the
+same record into `runs` (`telegram-bot/src/supabase.js`), when the two Supabase
+variables are set. Writing both, rather than replacing the commit as first
+planned, keeps the JSON files current as the app's fallback and makes rolling
+back to static mode a one-line change.
+
+**Hosting.** The bot runs as a Supabase Edge Function (`telegram-bot`), reached
+by Telegram webhook, in the same project as the database. It moved off Railway
+when that trial ended. Being stateless there, its drafts live in a
+`bot_sessions` table (chat id → session jsonb; RLS on, no policies, service key
+only). `telegram-bot/src/bot.js` holds the behaviour and runs unchanged under
+Node for local use. The function is one line that imports `src/edge.ts` from
+GitHub at a pinned commit, so the running code is exactly a pushed, tested
+commit. JWT verification is off for it, since Telegram can't send a Supabase
+token; each update is authenticated by Telegram's secret-token header instead,
+derived from the bot token.
 Template fields stay the same shape as today, since only the `running`
 category is live — the template's `type:` line would only need to offer
 other categories' type lists once a second category actually exists.
@@ -224,41 +237,53 @@ scoped.
 
 ## 11. Before switching to the backend
 
-In order. Items 1–7 are account and console setup that only the owner can do.
-Nothing here costs money except the optional Apple step.
+Where things stand. The click-by-click version of the dashboard steps is
+`supabase/SETUP.md`.
 
-1. **Mac tooling.** Accept the Xcode license (`sudo xcodebuild -license accept`).
-   Until then `git` and `python3` are blocked. Then
-   `brew install supabase/tap/supabase gh`.
-2. **Supabase.** Create two free projects, `velocity-dev` and `velocity-prod`,
-   in the region closest to the UAE. Keep each project's URL and **publishable**
-   key: both are public and go in the frontend. The **secret** key goes only in
-   the bot's Railway env.
-3. **Auth URLs.** Set the Site URL to `https://tahashi-exe.github.io/velocity-dashboard/`.
-   Add redirect URLs for that address with `/**` appended, plus `http://localhost:*/**`
-   on dev.
-4. **Email codes.** Set up custom SMTP (a dedicated Gmail with an App Password
-   will do for now). Change the magic-link email template to send the 6-digit
-   `{{ .Token }}`.
-5. **Google sign-in.** In Google Cloud, create a project and a consent screen
-   (homepage, `privacy.html` and `terms.html` URLs, scopes `openid email profile`
-   only, published to production). Then create a Web OAuth client whose redirect
-   URI is `https://<project-ref>.supabase.co/auth/v1/callback`. Paste the client ID
-   and secret into Supabase → Auth → Providers → Google. The legal pages must be
-   live on Pages before this step.
-6. **Legal pages.** The contact email is filled in, and Velocity is described as an
-   independent community project rather than a named owner. Once the Supabase
-   region and email provider are chosen, name them in `privacy.html` §4. Before
-   opening beyond friends, name the legal owner (a person or registered company)
-   and have the pages reviewed.
-7. **Apple (later).** Join the Apple Developer Program. Create an App ID, a Services ID and
-   a Sign in with Apple key, then enter them in Supabase. Set a reminder to regenerate
-   the secret every 6 months.
-8. **Build** (see PRD §6 order): apply the migration to dev, then do the front-end
-   read path, sign-in sheet, synced RSVPs, My runs, Account and the bot repoint
-   (§8), all tested against dev.
-9. **Cutover.** Regenerate and run `supabase/seed.sql` on prod, point the
-   frontend config at prod, and deploy the bot change on Railway **at the same
-   time**. Otherwise bot edits land in JSON the site no longer reads. Keep
-   `clubs.json` / `events.json` as a read fallback until things are stable.
-   Reverting the commit is the rollback.
+**Done**
+
+- The schema and seed are applied to one Supabase project, `velocity-dev`
+  (Mumbai). For the friends phase that project is also the live one: every
+  sign-in setting has to be entered per project, so a second project would
+  double the setup for no gain yet. A clean production project comes before a
+  public launch.
+- The app's backend mode, the legal pages, and the bot's database write (§8)
+  are built.
+
+**Owner's dashboard steps** (`supabase/SETUP.md` Parts 1–5)
+
+1. **Email sender.** Custom SMTP through the Velocity Gmail and an App password.
+   Without it Supabase only emails members of its own organization, and the
+   sender shows as "Supabase Auth".
+2. **Email templates.** Add `{{ .Token }}` to "Confirm signup" and "Magic Link",
+   so the code can be typed as well as the link tapped.
+3. **Auth URLs.** Site URL `https://tahashi-exe.github.io/velocity-dashboard/`,
+   plus that address with `/**` and `http://localhost:8765/**` as redirect URLs.
+4. **Google sign-in.** A Google Cloud project, the three basic scopes, published
+   to production, and a Web OAuth client whose redirect URI is
+   `https://lxbawcwywniasqiriske.supabase.co/auth/v1/callback`. The client ID
+   and secret go into Supabase's Google provider. No logo, which would trigger
+   Google's brand review.
+5. **Bot.** Enter the bot's four secrets in Supabase (Edge Functions →
+   Secrets), then open the function's `?setup` address once to register the
+   webhook.
+
+**Cutover** (after 1–5)
+
+6. Regenerate and run `supabase/seed.sql`, so the database matches the JSON
+   files as they are that day. The bot keeps the two in step from then on.
+7. Set `PROD` in `config.js` to the project's URL and publishable key, and name
+   the region and email provider in `privacy.html` §4.
+8. Test on the live site: email code, email link, Google, an RSVP, Interested,
+   My runs, sign out, delete account. On a phone as well as a laptop.
+
+Rollback is setting `PROD` back to `null`: the site returns to static mode on
+the JSON files, which the bot has kept current throughout.
+
+**Later**
+
+- **Apple.** Join the Apple Developer Program. Create an App ID, a Services ID
+  and a Sign in with Apple key, then enter them in Supabase. Set a reminder to
+  regenerate the secret every 6 months.
+- **Before going public.** A separate production project, a named legal owner
+  on the legal pages, and a review of them.
