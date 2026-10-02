@@ -6,23 +6,16 @@
 // Re-run it on cutover day so records the bot added in the meantime come
 // across too. It upserts on `slug`, so running the output twice is harmless.
 //
-// Normalization mirrors data.js toRun() exactly — the slug must match the id
-// the static app already uses, or existing localStorage RSVPs won't map over.
+// The record -> row mapping is shared with the Telegram bot
+// (telegram-bot/src/run-row.js), so a seeded run and one the bot publishes
+// are built by the same code and get the same slug.
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { toRunRow } from '../telegram-bot/src/run-row.js'
 
 const root = new URL('..', import.meta.url)
 const readJson = name => JSON.parse(readFileSync(fileURLToPath(new URL(name, root)), 'utf8'))
-
-const TYPE_KEYS = ['social', 'tempo', 'training', 'long_run', 'pyramid']
-
-// Same as data.js slug()
-const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-
-// Same as data.js mapOldTypeToKey(): legacy `track` and anything unrecognised
-// read as training.
-const typeKey = t => (TYPE_KEYS.includes(t) ? t : 'training')
 
 const sql = v => {
   if (v === null || v === undefined) return 'null'
@@ -31,37 +24,9 @@ const sql = v => {
 }
 const sqlArray = arr => `array[${arr.map(sql).join(', ')}]::text[]`
 
-function toRow(item, kind) {
-  const cost = item.cost === 'free' || item.cost === 'paid' ? item.cost : null
-  const details = {}
-  if (item.surface) details.surface = item.surface
-  if (item.pace) details.pace = item.pace // retired, but kept like the bot does
-  return {
-    slug: `${slug(item.name)}-${kind}`,
-    category_key: 'running',
-    type_key: typeKey(item.type),
-    kind,
-    name: item.name,
-    location_name: item.location_name || '',
-    lat: Number(item.lat),
-    lng: Number(item.lng),
-    freebies: !!item.freebies,
-    cost,
-    price: cost === 'paid' && item.price ? String(item.price) : '',
-    day_of_week: kind === 'recurring' ? String(item.day).toLowerCase() : null,
-    event_date: kind === 'one_off' ? item.date : null,
-    time: item.time,
-    register_link: item.link || '',
-    photos: Array.isArray(item.photos) ? item.photos.filter(Boolean).slice(0, 3) : [],
-    notes: item.notes || '',
-    details,
-    last_updated: item.last_updated || null,
-  }
-}
-
 const rows = [
-  ...readJson('clubs.json').map(c => toRow(c, 'recurring')),
-  ...readJson('events.json').map(e => toRow(e, 'one_off')),
+  ...readJson('clubs.json').map(c => toRunRow(c, 'recurring')),
+  ...readJson('events.json').map(e => toRunRow(e, 'one_off')),
 ]
 
 const slugs = rows.map(r => r.slug)

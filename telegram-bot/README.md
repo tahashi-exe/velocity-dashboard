@@ -1,8 +1,10 @@
 # Velocity private Telegram admin bot
 
-A private assistant for maintaining VelocityAE's `clubs.json` and `events.json`.
-It is separate from the GitHub Pages website and runs as its own always-on
-Node.js process (see [Deploying to Railway](#deploying-to-railway) below).
+A private assistant for maintaining VelocityAE's runs: `clubs.json` and
+`events.json` on GitHub, and the `runs` table in the app's database. It is
+separate from the GitHub Pages website and runs as a Supabase Edge Function
+(see [Where it runs](#where-it-runs) below), so there is no server to keep
+alive and nothing to pay for.
 
 There is no AI involved. The bot sends one block containing every field; you
 fill it in and send it back as a single message, add photos, then get a
@@ -22,45 +24,25 @@ its own message — so they're asked for immediately after it.
 You use this bot directly from your normal Telegram account — no second
 account needed.
 
-## 2. Install and configure
+## 2. Give it its secrets
 
-From this directory:
+The bot needs four values. They are entered once in the Supabase dashboard and
+never appear in this repo. `supabase/SETUP.md` Part 5 walks through it click by
+click.
 
-```bash
-npm install
-cp .env.example .env
-```
+| Secret | What it is |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | The token from @BotFather |
+| `TELEGRAM_ADMIN_CHAT_ID` | Your *numeric* Telegram ID (send any message to @userinfobot). This is the access check: the bot answers nobody else. Your `@username` is not used, because usernames can change |
+| `GITHUB_TOKEN` | A fine-grained personal access token limited to this repository, with **Contents: Read and write** |
+| `GITHUB_REPOSITORY` | `owner/repository-name` |
 
-Fill in `TELEGRAM_BOT_TOKEN`, then discover your numeric chat ID:
+`GITHUB_BRANCH` is optional and defaults to `main`. The database address and
+key are supplied by Supabase itself.
 
-```bash
-npm run discover-chat-id
-```
-
-Copy the printed number into `TELEGRAM_ADMIN_CHAT_ID` in `.env`. This is the
-access control check — your `@username` is not used because usernames can
-change.
-
-Create a GitHub fine-grained personal access token limited to the Velocity
-repository with **Contents: Read and write** permission. Add it as
-`GITHUB_TOKEN`; set `GITHUB_REPOSITORY` to `owner/repository-name` and leave
-`GITHUB_BRANCH=main` unless you deploy from another branch.
-
-Optionally set `DRAFTS_FILE` to control where in-progress answers are saved
-(see [Drafts](#drafts) below). The default is a file in the system temp
-directory, which is fine everywhere.
-
-Never commit `.env`, paste a bot token into chat, or put any of these values
-in the website JavaScript.
-
-## 3. Run it locally
-
-```bash
-npm start
-```
-
-Keep that terminal open while testing. For everyday use, deploy it — see
-below.
+Never commit a token, paste one into a chat, or put any of these values in the
+website's JavaScript. A token that has been pasted somewhere should be replaced:
+`/revoke` in @BotFather, or delete and recreate the GitHub token.
 
 ## How to use it
 
@@ -126,6 +108,23 @@ Then you get a preview with **Approve and publish**, **Edit the form**, and
 today's Dubai date, and replies with the commit link. Wait about 1–2 minutes
 for GitHub Pages to deploy, then refresh VelocityAE.
 
+### The database
+
+Approve does a second write after the GitHub commit: the same record goes into
+the `runs` table that the app reads once accounts are switched on
+(`TECHNICAL.md` §8). The reply then says **Published to GitHub and saved to
+the database**.
+
+The JSON files stay the bot's source of truth: `/editclub` and the lists still
+read from GitHub, and the app keeps the JSON files as its fallback.
+
+- An edit updates the database row the record had before the edit, so renaming
+  a club keeps its row and everyone's RSVPs for it.
+- If the commit succeeds but the database write fails, the bot says so and
+  keeps the draft. Tap **Approve and publish** again to retry just the database;
+  nothing is committed twice. **Edit the form** is refused at that point, since
+  the commit is already in, and **Reject** leaves things as they are.
+
 ### The location line — three ways
 
 - **Paste a Google Maps link**: Share → Copy link. Full links and shortened
@@ -181,15 +180,13 @@ The five types match the filter chips in the live app exactly
 
 ## Drafts
 
-Answers are written to a small JSON file whenever they change and deleted the
-moment you publish or cancel. If the process restarts mid-entry, the bot picks
-the session back up and re-sends whatever it was waiting on — the form
-pre-filled with what you'd already entered, the photos prompt, or the preview.
+Whatever you've entered so far is saved after every message and deleted the
+moment you publish or cancel, so you can leave an entry half-finished and come
+back to it. Send any message and the bot carries on from where it was; a draft
+left alone for a week is dropped.
 
-**This protects against restarts and crashes, not redeploys.** Railway gives
-each deploy a fresh filesystem, so anything half-finished when you push new
-code is gone — start it again. Set `DRAFTS_FILE` to a path on a mounted volume
-if you ever want drafts to survive deploys too.
+On Supabase the drafts live in the `bot_sessions` table. They have to: the
+function keeps nothing in memory between two messages.
 
 ## Current limits
 
@@ -198,7 +195,7 @@ if you ever want drafts to survive deploys too.
   under `club-photos/`) — the bot never looks *at* what's in them. No
   screenshot parsing or auto-cropping; that would need an AI step, which
   this version deliberately doesn't use.
-- Attached photos are staged locally and only uploaded to GitHub at
+- Attached photos are only fetched from Telegram and uploaded to GitHub at
   **Approve and publish**, same as every other field — but if publishing
   fails partway (photos land, then the `clubs.json`/`events.json` write
   fails), the already-uploaded photos stay on GitHub rather than rolling
@@ -208,85 +205,87 @@ if you ever want drafts to survive deploys too.
   Renaming is fine — edit the Name field; the bot still knows which original
   record to replace.
 
-## Deploying to Railway
+## Where it runs
 
-This keeps the bot running without your computer staying on. It's live now as
-the `velocity-telegram-bot` project.
+As a Supabase Edge Function named `telegram-bot`, in the same project as the
+app's database. Telegram delivers each message to it as a web request (a
+webhook), the function handles it and goes back to sleep.
 
-> **`git push` does not deploy the bot.** The service is **not** connected to
-> a GitHub repo — it's deployed by uploading this directory with the Railway
-> CLI. Pushing to `main` updates the website (GitHub Pages) but leaves the bot
-> running whatever was last uploaded. This has already caused one round of
-> "why is the bot still on the old version?", so it's worth remembering.
+It used to run on Railway as an always-on process. Railway's free trial ended
+and every deployment there was removed, which is why it moved.
+
+### How the code is laid out
+
+| File | What it is |
+|---|---|
+| `src/bot.js` | The bot itself: every command, message handler and button |
+| `src/template.js` | Field definitions, validation and the paste-back form |
+| `src/github.js`, `src/supabase.js`, `src/run-row.js` | The two writes a publish makes, and the record → database row mapping |
+| `src/session-store.js` | Drafts in the `bot_sessions` table |
+| `src/edge.ts` | Entry point on Supabase: webhook in, `bot.js` does the rest |
+| `src/index.js` | Entry point under Node, for running it on your own machine |
+
+`bot.js` uses nothing that only exists in Node, and is handed grammy by
+whichever entry point starts it, so the same file runs in both places.
 
 ### Shipping a change
 
-From this directory:
+The function doesn't hold a copy of the code. `supabase/functions/telegram-bot/index.ts`
+is one line that loads `src/edge.ts` from GitHub **at one exact commit**, so
+what runs is byte for byte what was tested and pushed.
+
+1. Run `npm test`, commit and push.
+2. Put that commit's full id in `supabase/functions/telegram-bot/index.ts`.
+3. Deploy that file as the function `telegram-bot`, with JWT verification
+   **off** (Telegram can't send a Supabase token; see below for what protects
+   it instead). With the Supabase CLI:
+
+   ```bash
+   supabase functions deploy telegram-bot --no-verify-jwt
+   ```
+
+4. Open `https://<project-ref>.supabase.co/functions/v1/telegram-bot?setup` once.
+   It tells Telegram where to send messages and answers with the bot's
+   username and the webhook address.
+
+Pushing alone changes nothing: the function keeps running the commit it was
+deployed with.
+
+### Checking on it
+
+`https://<project-ref>.supabase.co/functions/v1/telegram-bot` answers
+`{"ok":true}` when all four secrets are set, or lists the names of the ones
+that are missing. Opening it with `?setup` also reports how many messages are
+waiting and the last delivery error, if any. Neither ever shows a secret.
+Detailed logs are in the Supabase dashboard under Edge Functions.
+
+### What protects it
+
+The function's address is public, as any webhook's is. Every message Telegram
+sends carries a secret header; grammy rejects a request without the right one.
+That secret is derived from the bot token, so nothing extra has to be stored,
+and replacing the token changes it: run `?setup` again after a `/revoke`.
+
+On top of that the bot only answers `TELEGRAM_ADMIN_CHAT_ID`.
+
+### Running it locally
+
+For trying a change before shipping it:
 
 ```bash
-railway up
+npm install
+cp .env.example .env    # then fill in the four values
+npm start
 ```
 
-That uploads the folder, builds it, and swaps the container over. Files listed
-in `.gitignore` — including `.env` — are excluded, so secrets stay out of the
-upload; Railway supplies them from its own **Variables** instead.
+**This takes the bot over.** A bot can be reached by webhook or by polling, not
+both, and starting it locally removes the webhook. Messages then come to your
+machine until you stop it (`Ctrl-C`) and open the `?setup` address again to
+hand the bot back to Supabase.
 
-Confirm it took with `railway status` (the active deployment's timestamp should
-be the moment you deployed) and `railway logs` (look for
-`Velocity Telegram bot is running.`). Then send `/newclub` in Telegram: the new
-flow replies with one copy-paste block, the old one asked "Name — step 1 of 12".
-
-Expect a single `409` in the logs right after a deploy — the outgoing container
-drains while the new one starts, so for a second or two both are polling. It
-restarts itself and settles. A 409 that keeps repeating means something else is
-polling; see below.
-
-### Variables
-
-Set in the service's **Variables** tab, not in the repo: `TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_ADMIN_CHAT_ID`, `GITHUB_TOKEN`, `GITHUB_REPOSITORY`. `GITHUB_BRANCH`
-is optional and defaults to `main`; `DRAFTS_FILE` is optional too (see
-[Drafts](#drafts)).
-
-Railway auto-detects Node and runs `npm install` then `npm start`. No
-Dockerfile, Procfile or `railway.json` is needed — `package.json` (including
-`engines.node >= 20`) is the whole build contract.
-
-### If you'd rather push-to-deploy
-
-Connect the service to the GitHub repo in Railway's **Settings → Source**, and
-set **Root Directory** to `telegram-bot` so it builds the right folder. After
-that `git push` deploys the bot as well as the site, and `railway up` is no
-longer needed.
-
-### Only one copy can run at a time
-
-Telegram allows a single long-polling client per bot token. If the bot is
-running on your laptop *and* on Railway, Telegram rejects the second one with
-`409 Conflict: terminated by other getUpdates request`, and the two will trade
-messages unpredictably — some of your replies reaching one process, some the
-other.
-
-So before running it locally, pause the Railway service — otherwise the two
-kill each other in a loop: each restart displaces the other's poll, which
-crashes it, which restarts it. Stop a local copy with `Ctrl-C` or
-`pkill -f "node src/index.js"`. A 409 repeating in either set of logs means
-both are live.
-
-Note that a plain `getUpdates` call can't detect this — a fresh call always
-*wins* the slot, so it succeeds whether or not something else is polling. Only
-a long-lived poll reveals a competitor, by being displaced. `railway logs` is
-the quicker check.
-
-### No HTTP port is expected
-
-The bot long-polls rather than serving a webhook, so it needs no port and no
-public URL. Railway may still show a "no open ports detected" notice on the
-service — that's expected for a worker process and not a failure. Don't add a
-healthcheck; there's nothing to answer it.
-
-A low-traffic personal bot like this sits comfortably inside the free trial's
-usage.
+Locally, drafts are kept in a file (`DRAFTS_FILE`, by default in the system
+temp directory), and the database write only happens if `SUPABASE_URL` and
+`SUPABASE_SECRET_KEY` are in `.env`.
 
 ## Tests
 
@@ -295,9 +294,14 @@ npm test
 ```
 
 Covers form rendering, parsing, validation, the conditional price, legacy
-records, and the session state machine. Node's built-in runner, no test
-dependency. Everything runs offline — no Telegram, no GitHub, no secrets — so
-it's safe to run anywhere, including CI.
+records and the session state machine (`template.test.js`); the database row
+mapping and both stores (`database.test.js`); and whole conversations driven
+through real grammy with Telegram, GitHub and Supabase scripted
+(`bot.test.js`). Those last ones build a fresh bot for every message, the way
+the Edge Function can, so anything that only works by staying in memory fails.
+
+Node's built-in runner, no test dependency. Everything runs offline — no
+Telegram, no GitHub, no secrets — so it's safe to run anywhere, including CI.
 
 `npm run form` prints the blank block for both collections. Run it after
 changing any field and update `claude-skill/SKILL.md` if the output no longer
