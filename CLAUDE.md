@@ -11,10 +11,20 @@ This file describes the app **as it exists today**. `PRD.md` holds the v2
 product plan and `TECHNICAL.md` the schema/backend design — parts of both are
 now built (see Current status), but everything backend-shaped in them is not.
 
-Still a static site on GitHub Pages, no backend. Accounts and synced RSVPs
-(`PRD.md` §4.8, §4.8b) remain blocked on the Supabase migration
-(`TECHNICAL.md` §5–6). RSVP and preferences exist today as **localStorage
-mocks only** — nothing syncs, nothing is shared between devices.
+The app runs in one of two modes, chosen by `config.js`:
+
+- **Static mode** — what the live GitHub Pages site runs today. No backend:
+  runs come from the JSON files, and RSVP and preferences are **localStorage
+  mocks only** — nothing syncs, nothing is shared between devices, and nobody
+  is asked to sign in.
+- **Backend mode** — accounts and synced RSVPs on Supabase (`PRD.md` §4.8,
+  §4.8b; `TECHNICAL.md` §5–6). Built, but only switched on for `localhost`,
+  where it talks to the `velocity-dev` project. The live site moves to it at
+  cutover (`TECHNICAL.md` §11), once there is a prod project and the Telegram
+  bot writes to Supabase instead of the JSON files.
+
+Everything below describes static mode unless it says otherwise; "Accounts
+(backend mode)" covers what changes when the backend is on.
 
 ## Tech stack
 - **Hosting:** GitHub Pages (static, deploys from `main` branch)
@@ -23,7 +33,11 @@ mocks only** — nothing syncs, nothing is shared between devices.
   that's a v5+ API. `landing-map.js` attempts it in a try/catch and degrades
   to a flat zoom (see its header comment before "fixing" this).
 - **Data:** `clubs.json` (recurring) + `events.json` (one-off) — flat files,
-  edited via the Telegram bot (§ below) or by hand
+  edited via the Telegram bot (§ below) or by hand. In backend mode the app
+  reads the `runs` table instead and keeps the JSON files as a fallback
+- **Backend (backend mode only):** Supabase (Postgres + Auth), called straight
+  from the browser with supabase-js. The SDK is loaded on demand by
+  `backend.js`, so static mode never requests it
 - **Frontend:** Plain HTML/CSS/JS, no framework, no build step. Scripts are
   plain `<script>` tags loaded in dependency order by `index.html`.
 - **Fonts:** Bricolage Grotesque (display — wordmark, hero, panel titles,
@@ -40,8 +54,11 @@ mocks only** — nothing syncs, nothing is shared between devices.
 /
 ├── index.html          # Shell: landing, onboarding + install modals, run panel
 ├── style.css           # Theme + all component styles
+├── config.js           # Which backend, if any (null = static mode). Public values only
+├── backend.js          # Backend: Supabase client, sign-in, synced RSVPs, profile
 ├── data.js             # Velocity: data layer — load, normalize, status, prefs, RSVP, .ics
 ├── shared-ui.js        # SharedUI: landing, onboarding, install tutorial, run detail panel
+├── auth-ui.js          # AuthUI: gated actions, sign-in sheet, account panel
 ├── variant-a.js        # VariantA: topbar, map, bottom sheet, Run Now, Explore — mounts the app
 ├── calendar.js         # Calendar: day-band calendar rendering
 ├── map-helpers.js      # MapHelper: MapLibre setup + marker creation
@@ -181,15 +198,54 @@ the closest upcoming runs when nothing is in the `'soon'` window.
   onboarding. iOS gets an illustrated Share → Add to Home Screen walkthrough
   (Safari has no install API); Android gets a real `beforeinstallprompt`
   button; desktop is skipped. Shows every session until actually installed.
-- **RSVP** — Going / Interested / Not interested / Not going, per run, stored
-  in `localStorage` (`velocity_rsvp_v2`). Not synced, deliberately.
+- **RSVP** — Going / Not going / Interested, per run, stored in
+  `localStorage` (`velocity_rsvp_v2`). Not synced, deliberately. Interested is
+  a save-for-later; "Not interested" was removed, and a stale stored value of
+  it reads as no RSVP (`getRsvp` in `data.js`).
 - **Add to calendar** — per-event `.ics` download (`data.js`: `downloadICS`).
+  Like RSVP, it's called through `AuthUI.require()`, which in static mode just
+  performs the action.
 - **Open in Maps** — links straight to `google.com/maps/search/?api=1&query=lat,lng`
   using the run's existing coordinates (no new field, no bot change needed).
   Opens the native Google Maps app on a phone that has it, else the web map.
 
 Only one UI variant exists (`variant-a.js`). Two others and a switcher were
 prototyped and deliberately deleted once this one was chosen.
+
+## Accounts (backend mode)
+On when `config.js` returns a `backend` (today: `localhost` → `velocity-dev`).
+`Backend.enabled` is the switch every other module checks.
+
+- **Runs** load from the `runs` table (`data.js`: `fromRow`), falling back to
+  the JSON files if Supabase can't be reached. A run's `id` is its slug in both
+  modes; the database uuid never leaves `backend.js`.
+- **Sign-in is never asked for on open.** `AuthUI.require(action, headline)`
+  gates RSVP, Add to calendar and My runs: signed in → acts; guest → opens the
+  sign-in sheet, and the action completes by itself afterwards. Across the
+  Google redirect the action waits in `sessionStorage`
+  (`velocity_pending_action`), and that page load skips the landing hero.
+- **Sign-in sheet** offers only the methods the Supabase project has enabled
+  (read from its public `/auth/v1/settings`): Google and Apple buttons appear
+  once those providers are switched on there, with no code change. Email works
+  by typed code or by the link in the email. The link opens a new tab, and
+  supabase-js then signs in every open tab at once, so the sheet listens for
+  `velocity:auth-changed` and closes itself and completes the tapped action in
+  the tab the user started in (`finishSignIn` in `auth-ui.js`).
+- **RSVPs** are the signed-in user's rows in `rsvps`. A tap toggles; a replay
+  after sign-in sets the status outright, so it can't clear an existing RSVP.
+  The detail panel shows anonymous totals from `run_counts()`.
+- **First sign-in on a device** uploads its localStorage RSVPs and prefs, sets
+  the display name from the onboarding name, and records the accepted Terms
+  version (`VELOCITY_CONFIG.termsVersion`).
+- **My runs** — a toggle on the calendar panel showing only the runs marked
+  Going, with "Add all to calendar".
+- **Interested list** (⋯ → Interested, and from Account) — the wishlist: every
+  run whose status is `interested`, as cards with a Remove button. One status
+  per run, so marking Going or Not going takes a run off it. In backend mode
+  the calendar highlights Going only; static mode has no list, so there
+  Interested keeps its calendar highlight.
+- **Account** (⋯ → Account) — edit name, run preferences, download my data
+  (JSON), sign out, delete account.
 
 ## How data gets updated
 Hand-edit `clubs.json` / `events.json` in GitHub's web editor and commit —
@@ -235,9 +291,14 @@ decision, not an oversight.
 - Keep dependency-light; no framework unless the project clearly outgrows it.
   The bot's form parsing is hand-rolled for this reason rather than pulling in
   `@grammyjs/conversations`.
-- No API keys in the frontend (MapLibre + OpenFreeMap are free/keyless). The
-  Telegram bot has its own secrets in `telegram-bot/.env` — **never** read,
-  print, or commit that file, and never put those values in frontend code.
+- No secrets in the frontend (MapLibre + OpenFreeMap are free/keyless). The
+  one key that does live there, the Supabase **publishable** key in
+  `config.js`, is public by design: row-level security decides what it can do.
+  The Supabase **secret** key must never appear in this repo. The Telegram bot
+  has its own secrets in `telegram-bot/.env` — **never** read, print, or commit
+  that file, and never put those values in frontend code.
+- Keep static mode working: anything account-related checks `Backend.enabled`
+  and leaves the static behaviour untouched when it is false.
 - Respect `prefers-reduced-motion` — there's a global override at the end of
   `style.css`.
 - See `PRD.md` §4.8/§4.8b and `TECHNICAL.md` §5–6 before adding accounts or
@@ -264,16 +325,32 @@ decision, not an oversight.
       landing page and the ⋯ menu. Friends-preview drafts: no named legal
       owner yet and not legally reviewed (`TECHNICAL.md` §11 item 6)
 - [x] Supabase schema (`supabase/migrations/`) + seed script, tested against
-      Postgres (PGlite) incl. RLS and account deletion. **Not applied to any
-      live project yet**; nothing in the app reads from it
-- [ ] Supabase backend, accounts/sign-in, synced RSVPs — sign-in UX is in
-      `PRD.md` §4.8b, the pre-switch checklist in `TECHNICAL.md` §11
+      Postgres (PGlite) incl. RLS and account deletion. Applied and seeded on
+      the `velocity-dev` Supabase project (Mumbai, ref `lxbawcwywniasqiriske`);
+      **nothing in the app reads from it yet**, and there is no prod project
+- [x] Backend mode in the app: Supabase read path with JSON fallback, sign-in
+      sheet, synced RSVPs with totals, My runs, Interested list, Account
+      panel. Verified on `localhost` for guests and with a simulated signed-in
+      user. Taha has signed in for real once, through the email link in
+      Chrome: the account, Terms acceptance, an RSVP and its history all saved
+- [ ] Real sign-in tests still to do: typed email code (needs `{{ .Token }}`
+      in the Supabase email templates) and Google (`TECHNICAL.md` §11 item 5)
+- [ ] Custom SMTP so sign-in emails come from Velocity, not "Supabase Auth",
+      and can reach people outside the Supabase team (`TECHNICAL.md` §11 item 4)
+- [ ] Telegram bot writes to Supabase instead of the JSON files
+      (`TECHNICAL.md` §8) — required before cutover
+- [ ] Prod Supabase project, then cutover: set `PROD` in `config.js`
+      (`TECHNICAL.md` §11 item 9)
+- [ ] Sign in with Apple (needs an Apple Developer account)
 - [ ] Freebies page
 - [ ] Glowing GPX routes (pending GPX files from Taha)
 
 ## Known simplifications (flagged for later refinement)
-- RSVP and prefs are `localStorage` only — clearing site data loses them, and
-  nothing is shared between devices or viewers.
+- In static mode RSVP and prefs are `localStorage` only — clearing site data
+  loses them, and nothing is shared between devices or viewers.
+- After signing in with Google, "Add to calendar" isn't replayed
+  automatically (a download needs a fresh tap after the page reload); the run
+  reopens with a prompt to tap it again.
 - `tempo` / `long_run` / `pyramid` runs render as white pins, since only
   `training` is flagged `trainingEquivalent`. Fine for now; revisit if those
   types get common enough to need their own color.

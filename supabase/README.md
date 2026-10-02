@@ -4,6 +4,10 @@ Schema and data import for the backend described in `TECHNICAL.md` §2 and §5�
 Nothing in the live site reads from Supabase yet. The site still uses
 `clubs.json` and `events.json` until cutover.
 
+**Projects:** `velocity-dev` (Mumbai / `ap-south-1`, ref `lxbawcwywniasqiriske`,
+`https://lxbawcwywniasqiriske.supabase.co`) has the migration and seed applied.
+There is no prod project yet; it gets created at cutover.
+
 | File | What it is |
 |---|---|
 | `migrations/20260930000000_init.sql` | Tables, row-level security, triggers, `run_counts()`, `delete_my_account()`, and the `running` category and type rows |

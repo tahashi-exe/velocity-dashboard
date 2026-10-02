@@ -87,7 +87,7 @@ so the app upserts. Clearing an RSVP deletes the row.
 |---|---|---|
 | `user_id` | fk → `profiles.id` | defaults to `auth.uid()` |
 | `run_id` | fk → `runs.id` | |
-| `status` | `interested` \| `not_interested` \| `going` \| `not_going` | calendar "interested" (PRD §4.9) reads/writes this same field |
+| `status` | `going` \| `not_going` \| `interested` | `interested` is the saved-for-later list (PRD §4.8). The enum also still contains `not_interested`, retired with its button; the app never writes it and reads it as no RSVP |
 | `created_at`, `updated_at` | timestamp | |
 
 **`rsvp_log` table** — append-only history of every RSVP change (status null =
@@ -215,8 +215,8 @@ scoped.
 4. **Pin visuals** — implement the base-color + freebies-ring logic (§4).
 5. **Map migration** — MapLibre GL JS + free vector tiles, port markers to
    the new pin visuals from step 4.
-6. **Auth + RSVP** — email/password + Apple/Google sign-in (§5), Interested/
-   Not interested/Going/Not going persisted per user (PRD §4.8).
+6. **Auth + RSVP** — Google / email-code sign-in, Apple later (§5); Going /
+   Not going and the Interested list persisted per user (PRD §4.8).
 7. **Calendar view + This Week/Month toggle** — day-box calendar (PRD §4.9),
    top bar scope toggle (PRD §4.4), expired one-off filtering (§7).
 8. **Calendar export** — per-event `.ics` download (PRD §4.10).

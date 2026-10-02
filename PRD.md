@@ -88,7 +88,7 @@ Reorder and update the detail panel and list rows to show, in this order:
 3. **Schedule** — recurring shows as a standing slot ("Every Wednesday,
    19:30", see §4.6); one-off shows the specific date + time
 4. **Register here** — renamed from the current plain link label
-5. **RSVP buttons** — Interested / Not interested / Going / Not going (§4.7)
+5. **RSVP buttons** — Going / Not going, plus Interested to save it for later (§4.8)
 6. **Freebies** — "Freebies included" or nothing shown if false
 
 `location_name`, the map pin, and `notes` stay as supporting info around
@@ -107,9 +107,17 @@ immediately — but the record is **never hard-deleted**, per your call. It
 stays in the backend indefinitely, available for future history/stats
 features, just filtered out of every current view.
 
-### 4.8 RSVP: Interested / Not interested / Going / Not going
-Four-state RSVP per user per event. Persists per account and syncs across
-devices, which is what pulls accounts (§4.8b) into this PRD.
+### 4.8 RSVP: Going / Not going, and Interested as a saved list
+The RSVP itself is two options, **Going** and **Not going**, to keep it simple.
+"Not interested" was dropped.
+
+**Interested** stays as a third button, but it means "save this for later", like
+a wishlist while shopping. Runs marked Interested collect on the user's own
+**Interested list**, a separate page they can open when signed in. A run has one
+status at a time, so deciding Going or Not going takes it off the list.
+
+All of it persists per account and syncs across devices, which is what pulls
+accounts (§4.8b) into this PRD.
 
 ### 4.8b Accounts & sign-in
 Sign-in should take one tap. The options are **Continue with Google** and an
@@ -127,7 +135,9 @@ to an account:
 
 | Guest taps… | Sheet headline |
 |---|---|
-| Going / Interested / Not interested / Not going | "Sign in to save your RSVP for *{run}*" |
+| Going / Not going | "Sign in to save your RSVP for *{run}*" |
+| Interested | "Sign in to save *{run}* to Interested" |
+| Interested (⋯ menu) | "Sign in to see your Interested list" |
 | Add to calendar | "Sign in to add *{run}* to your calendar" |
 | My runs (calendar) | "Sign in to see your runs" |
 | Sign in (⋯ menu) | "Sign in to Velocity" |
@@ -154,8 +164,11 @@ Onboarding preferences (`velocity_prefs`) stay on the device for guests and sync
 to the profile once signed in.
 
 **My runs** is a toggle on the calendar that shows only the runs the user
-marked Going (solid) or Interested (outlined), plus "Add all to calendar". It's
-only available when signed in.
+marked Going, plus "Add all to calendar". It's only available when signed in.
+
+**Interested** (⋯ menu and the Account panel) is the saved list from §4.8: each
+saved run as a card, with a Remove button, opening the run to mark Going. It's
+also only available when signed in.
 
 Other people only ever see anonymous totals ("8 going · 5 interested"). Going
 in Velocity doesn't register anyone with the club, and the RSVP UI says so next to
@@ -167,10 +180,10 @@ requires them to be public.
 
 ### 4.9 Calendar view
 A new view alongside the map/list: a weekly (or monthly, per the §4.4
-toggle) grid of day boxes showing the runs scheduled that day. Marking a run
-"interested" from the calendar **is the same action** as the Interested RSVP
-status used everywhere else in the app — one RSVP concept, not a separate
-bookmarking system.
+toggle) grid of day boxes showing the runs scheduled that day. With accounts
+on, the calendar highlights the runs the user is Going to; Interested runs are
+kept on the Interested list (§4.8) instead. Both are the same per-run status
+field, not two separate systems.
 
 ### 4.10 Calendar export (add to device calendar)
 Each run gets an "Add to calendar" action that downloads a single `.ics`
