@@ -361,10 +361,12 @@ decision, not an oversight.
       Function instead of on Railway, whose trial expired (every deployment
       there has been removed since 2026-09-09, so the bot has been offline).
       Tested offline end to end; the `bot_sessions` table is applied
-- [ ] Bot not live yet: needs its four secrets set in Supabase
-      (`supabase/SETUP.md` Part 5), then the real function deployed and its
-      webhook registered. A placeholder probe is deployed under the function
-      name `telegram-bot` meanwhile
+- [ ] Bot deployed but not answering yet. The `telegram-bot` function is live
+      at the commit named in `supabase/functions/telegram-bot/index.ts` and
+      reports its four secrets as missing. Once they are set in Supabase
+      (`supabase/SETUP.md` Part 5), opening the function's `?setup` address
+      registers the webhook; then it needs a real end-to-end test from
+      Telegram
 - [ ] Cutover: for the friends phase the one project (`velocity-dev`) is the
       live one, so this is re-running the seed and setting `PROD` in
       `config.js`, once the bot above is deployed and sign-in is set up

@@ -17,7 +17,7 @@ bot's key.
 |---|---|
 | `migrations/20260930000000_init.sql` | Tables, row-level security, triggers, `run_counts()`, `delete_my_account()`, and the `running` category and type rows |
 | `migrations/20261002000000_bot_sessions.sql` | The Telegram bot's drafts table. Service key only |
-| `functions/telegram-bot/index.ts` | The bot's Edge Function: one line that loads `telegram-bot/src/edge.ts` from GitHub at a pinned commit (added when the bot is first deployed) |
+| `functions/telegram-bot/index.ts` | The bot's Edge Function: one line that loads `telegram-bot/src/edge.ts` from GitHub at a pinned commit |
 | `seed-from-json.mjs` | Turns `clubs.json` and `events.json` into `seed.sql`. It builds rows with `telegram-bot/src/run-row.js`, the same mapping the bot uses, so run slugs match the ids the app uses today |
 | `seed.sql` | Generated output. Regenerate it right before cutover so records the bot added since are included |
 
