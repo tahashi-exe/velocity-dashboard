@@ -22,11 +22,14 @@ const SharedUI = (() => {
   });
   window.addEventListener('appinstalled', () => { deferredInstallPrompt = null; });
 
+  // Going / Not going is the RSVP. Interested is a save-for-later: with
+  // accounts on, those runs collect on the user's Interested list (a wishlist),
+  // separate from My runs. One status per run, so deciding Going or Not going
+  // takes a run off the list. "Not interested" was dropped to keep this simple.
   const RSVP_OPTIONS = [
     { key: 'going', label: 'Going' },
-    { key: 'interested', label: 'Interested' },
-    { key: 'not_interested', label: 'Not interested' },
     { key: 'not_going', label: 'Not going' },
+    { key: 'interested', label: 'Interested' },
   ];
 
   function toast(msg) {
@@ -76,11 +79,56 @@ const SharedUI = (() => {
   function escapeAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // Toast wording for an RSVP change. `tapped` is the button that was
+  // pressed, `next` the resulting status (null when that press cleared it).
+  // The "Interested list" wording only applies with accounts on; static mode
+  // has no such list and keeps its original messages.
+  function rsvpToast(tapped, next) {
+    if (next === 'interested') return Backend.enabled ? 'Saved to Interested' : 'Marked interested';
+    if (next === 'going') return 'Marked going';
+    if (next === 'not_going') return 'Marked not going';
+    return Backend.enabled && tapped === 'interested' ? 'Removed from Interested' : 'RSVP cleared';
+  }
+
+  // "3 going · 1 interested" — anonymous totals from the backend. Empty in
+  // static mode, where there is nobody else's RSVP to count.
+  function countsLabel(run) {
+    if (!Backend.enabled) return '';
+    const c = Backend.countsFor(run.id);
+    return [c.going ? `${c.going} going` : '', c.interested ? `${c.interested} interested` : '']
+      .filter(Boolean).join(' · ');
+  }
+
+  // The run currently shown in the detail panel, so an RSVP saved elsewhere
+  // (after sign-in, or on sign-out) can refresh it in place.
+  let currentRun = null;
+
+  // Reflects a run's RSVP state. Updates the open panel in place when it is
+  // already showing that run (a full re-render would restart the slideshow),
+  // otherwise opens it.
+  function showRsvpState(run) {
+    if (currentRun && currentRun.id === run.id && runPanel.classList.contains('open')) {
+      const status = Velocity.getRsvp(run.id);
+      runPanelContent.querySelectorAll('.rsvp-btn').forEach(b => b.classList.toggle('active', b.dataset.status === status));
+      const countsEl = document.getElementById('rsvp-counts');
+      if (countsEl) countsEl.textContent = countsLabel(run);
+      return;
+    }
+    openRunDetail(run);
+  }
+  document.addEventListener('velocity:auth-changed', () => {
+    if (currentRun && runPanel.classList.contains('open')) showRsvpState(currentRun);
+  });
 
   // PRD.md §4.5 order: kind badge -> type -> schedule -> register here ->
   // RSVP -> freebies. location/notes/last_updated stay as supporting info.
   function openRunDetail(run) {
     stopPhotoSlideshow();
+    currentRun = run;
     const now = new Date();
     const status = Velocity.statusOf(run, now);
     const visual = Velocity.pinVisual(run);
@@ -124,20 +172,25 @@ const SharedUI = (() => {
       <div class="rsvp-row" role="group" aria-label="RSVP">
         ${RSVP_OPTIONS.map(o => `<button type="button" class="rsvp-btn rsvp-${o.key}${currentRsvp === o.key ? ' active' : ''}" data-status="${o.key}">${o.label}</button>`).join('')}
       </div>
+      ${Backend.enabled ? `
+      <div class="rsvp-counts" id="rsvp-counts">${countsLabel(run)}</div>
+      <div class="rsvp-note">Your RSVP is for your own calendar. To join the run, use "Register here" too.</div>` : ''}
 
       ${run.notes ? `<div class="run-notes">${run.notes}</div>` : ''}
-      <div class="updated-note">Last updated ${run.last_updated} &middot; not synced (local prototype)</div>
+      <div class="updated-note">Last updated ${run.last_updated}${Backend.enabled ? '' : ' &middot; not synced (local prototype)'}</div>
     `;
 
+    // Both go through AuthUI.require: in static mode and when signed in it
+    // acts straight away; a guest in backend mode gets the sign-in sheet first
+    // (PRD.md §4.8b) and the action completes once they're in.
     document.getElementById('ics-btn').addEventListener('click', () => {
-      Velocity.downloadICS(run);
-      toast('Calendar file downloaded');
+      AuthUI.require({ type: 'ics', runId: run.id }, `Sign in to add ${run.name} to your calendar`);
     });
     runPanelContent.querySelectorAll('.rsvp-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const next = Velocity.setRsvp(run.id, btn.dataset.status);
-        runPanelContent.querySelectorAll('.rsvp-btn').forEach(b => b.classList.toggle('active', b.dataset.status === next));
-        toast(next ? `Marked ${btn.textContent.toLowerCase()}` : 'RSVP cleared');
+        const status = btn.dataset.status;
+        AuthUI.require({ type: 'rsvp', runId: run.id, status },
+          status === 'interested' ? `Sign in to save ${run.name} to Interested` : `Sign in to save your RSVP for ${run.name}`);
       });
     });
 
@@ -262,6 +315,9 @@ const SharedUI = (() => {
 
   function renderObStep() {
     const step = OB_STEPS[obIndex];
+    // The "device only" promise on the first step stops being true once
+    // signed in, where savePrefs() mirrors the answers to the profile.
+    const sub = step.key === 'about' && Backend.user() ? 'Saved to your account, so it follows you across devices.' : step.sub;
     const fieldsHtml = step.fields.map(f => {
       if (f.type === 'text') {
         const val = obData[f.key] != null ? obData[f.key] : '';
@@ -277,7 +333,7 @@ const SharedUI = (() => {
     onboardingSteps.innerHTML = `
       <div class="ob-progress">Step ${obIndex + 1} of ${OB_STEPS.length}</div>
       <div class="ob-step-title">${step.title}</div>
-      ${step.sub ? `<div class="ob-step-sub">${step.sub}</div>` : ''}
+      ${sub ? `<div class="ob-step-sub">${sub}</div>` : ''}
       ${fieldsHtml}
       <div class="ob-nav">
         <button class="ob-btn secondary" id="ob-back">${obIndex === 0 ? 'Skip' : 'Back'}</button>
@@ -336,5 +392,16 @@ const SharedUI = (() => {
     });
   }
 
-  return { toast, openPanel, closeAllPanels, openRunDetail, openOnboarding, initLanding, typeFilterChipsHtml, wireTypeFilter };
+  // Straight into the app, no hero, onboarding or install tutorial. Used when
+  // the page load is a return from Google's sign-in redirect: the user was
+  // already in the app a moment ago and is coming back to finish an action.
+  function skipLanding() {
+    landingPage.classList.add('hidden');
+    LandingMap.destroy();
+  }
+
+  return {
+    toast, openPanel, closeAllPanels, openRunDetail, showRsvpState, rsvpToast, escapeHtml,
+    openOnboarding, initLanding, skipLanding, typeFilterChipsHtml, wireTypeFilter,
+  };
 })();

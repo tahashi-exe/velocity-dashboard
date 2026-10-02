@@ -1,7 +1,13 @@
-/* ---------- v2 prototype: shared data layer ----------
-   Normalizes clubs.json/events.json into the runs[] shape from TECHNICAL.md
-   §2, entirely client-side (no backend — RSVP/prefs are localStorage mocks,
-   clearly not synced). Shared by all three UI variants. */
+/* ---------- shared data layer ----------
+   Produces the runs[] shape from TECHNICAL.md §2 and owns status, prefs,
+   RSVP and .ics logic.
+
+   Two modes, decided by config.js (see backend.js):
+   - static: runs come from clubs.json/events.json, RSVP and prefs are
+     localStorage only, nothing syncs. This is what the live site runs today.
+   - backend: runs come from Supabase, RSVPs belong to the signed-in user and
+     prefs are mirrored to their profile. The JSON files remain the fallback
+     if Supabase can't be reached. */
 
 const Velocity = (() => {
   const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -69,7 +75,33 @@ const Velocity = (() => {
     };
   }
 
-  async function loadRuns() {
+  // A `runs` table row -> the same internal shape toRun() produces. `id` stays
+  // the slug so everything keyed on run ids is identical in both modes.
+  function fromRow(row) {
+    return {
+      id: row.slug,
+      category: row.category_key,
+      kind: row.kind,
+      name: row.name,
+      location_name: row.location_name,
+      lat: row.lat,
+      lng: row.lng,
+      type_key: row.type_key,
+      freebies: row.freebies,
+      cost: row.cost,
+      price: row.price,
+      day_of_week: row.day_of_week,
+      event_date: row.event_date,
+      time: row.time.slice(0, 5), // Postgres `time` comes back as HH:MM:SS
+      register_link: row.register_link,
+      notes: row.notes,
+      photos: row.photos || [],
+      details: row.details || {},
+      last_updated: row.last_updated,
+    };
+  }
+
+  async function loadRunsFromJson() {
     const [clubsRes, eventsRes] = await Promise.all([fetch('clubs.json'), fetch('events.json')]);
     const clubs = await clubsRes.json();
     const events = await eventsRes.json();
@@ -78,6 +110,29 @@ const Velocity = (() => {
       ...events.map(e => toRun(e, 'one_off')),
     ];
   }
+
+  let loadedRuns = [];
+  let runsPromise = null;
+
+  function loadRuns() {
+    runsPromise = (async () => {
+      if (await Backend.ready) {
+        try {
+          const rows = await Backend.fetchRuns();
+          if (rows.length) return rows.map(fromRow);
+        } catch (e) {
+          console.warn('Velocity: could not read runs from the backend, using the JSON files', e);
+        }
+      }
+      return loadRunsFromJson();
+    })().then(runs => { loadedRuns = runs; return runs; });
+    return runsPromise;
+  }
+
+  // For code that needs a run by id but didn't load the list itself (replaying
+  // an action after sign-in).
+  function runsReady() { return runsPromise || Promise.resolve(loadedRuns); }
+  function findRun(id) { return loadedRuns.find(r => r.id === id) || null; }
 
   // null when the run predates the cost field — callers omit the row entirely
   // rather than claiming anything about a price nobody recorded.
@@ -173,26 +228,45 @@ const Velocity = (() => {
     return status.minutesDiff <= cap;
   }
 
-  /* ---------- RSVP (local mock — TECHNICAL.md §2 rsvps table, not synced) ---------- */
+  /* ---------- RSVP ----------
+     Static mode: a localStorage mock, not synced. Backend mode: the signed-in
+     user's rows in `rsvps` (TECHNICAL.md §2); a guest has none, and the UI
+     asks them to sign in before calling setRsvp (auth-ui.js). */
 
   function getRsvpMap() {
     try { return JSON.parse(localStorage.getItem(RSVP_KEY)) || {}; } catch (e) { return {}; }
   }
-  function getRsvp(runId) { return getRsvpMap()[runId] || null; }
-  function setRsvp(runId, status) {
+  // 'not_interested' was retired along with its button; a stale local value
+  // reads as no RSVP.
+  const RSVP_STATUSES = ['going', 'not_going', 'interested'];
+  function getRsvp(runId) {
+    const status = Backend.enabled ? Backend.rsvpFor(runId) : getRsvpMap()[runId];
+    return RSVP_STATUSES.includes(status) ? status : null;
+  }
+  // Resolves to the run's new status, or null if cleared. `toggle: false`
+  // sets the status outright instead of clearing it when it's already active.
+  async function setRsvp(runId, status, { toggle = true } = {}) {
+    if (Backend.enabled) return Backend.setRsvp(runId, status, { toggle });
     const map = getRsvpMap();
-    map[runId] = map[runId] === status ? null : status; // tap again to clear
+    map[runId] = toggle && map[runId] === status ? null : status; // tap again to clear
     if (!map[runId]) delete map[runId];
     localStorage.setItem(RSVP_KEY, JSON.stringify(map));
     return map[runId] || null;
   }
 
-  /* ---------- prefs (local, same shape as v1 velocity_prefs) ---------- */
+  /* ---------- prefs (same shape as v1 velocity_prefs) ----------
+     localStorage is always the working copy. When signed in, saves are also
+     mirrored to the profile so they follow the user across devices. */
 
   function getPrefs() {
     try { const raw = localStorage.getItem(PREFS_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
   }
-  function savePrefs(data) { localStorage.setItem(PREFS_KEY, JSON.stringify(data)); }
+  function savePrefs(data) {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(data));
+    if (Backend.user()) {
+      Backend.updateProfile({ prefs: data }).catch(e => console.warn('Velocity: prefs saved on this device only', e));
+    }
+  }
 
   // "Match my prefs" filter — the one thing onboarding's answers actually
   // drive today. Each field only constrains the match if the user answered
@@ -224,12 +298,10 @@ const Velocity = (() => {
   function escapeICS(s) { return String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n'); }
   const ICS_DAY = { sunday: 'SU', monday: 'MO', tuesday: 'TU', wednesday: 'WE', thursday: 'TH', friday: 'FR', saturday: 'SA' };
 
-  function icsForRun(run) {
-    const now = new Date();
+  function veventLines(run, now) {
     const start = nextOccurrence(run, now);
     const end = new Date(start.getTime() + 60 * 60000);
     const lines = [
-      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//VelocityAE//Prototype//EN',
       'BEGIN:VEVENT',
       `UID:${run.id}@velocityae.prototype`,
       `DTSTAMP:${toICSDate(now)}`,
@@ -240,21 +312,36 @@ const Velocity = (() => {
       `DESCRIPTION:${escapeICS(run.notes)}`,
     ];
     if (run.kind === 'recurring') lines.push(`RRULE:FREQ=WEEKLY;BYDAY=${ICS_DAY[run.day_of_week]}`);
-    lines.push('END:VEVENT', 'END:VCALENDAR');
-    return lines.join('\r\n');
+    lines.push('END:VEVENT');
+    return lines;
   }
 
-  function downloadICS(run) {
-    const blob = new Blob([icsForRun(run)], { type: 'text/calendar' });
+  // One calendar file holding every given run (a single run for the detail
+  // panel's button, several for My runs' "Add all to calendar").
+  function icsForRuns(runList) {
+    const now = new Date();
+    return [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//VelocityAE//Prototype//EN',
+      ...runList.flatMap(run => veventLines(run, now)),
+      'END:VCALENDAR',
+    ].join('\r\n');
+  }
+  function icsForRun(run) { return icsForRuns([run]); }
+
+  function downloadFile(content, type, filename) {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${slug(run.name)}.ics`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   }
+
+  function downloadICS(run) { downloadFile(icsForRun(run), 'text/calendar', `${slug(run.name)}.ics`); }
+  function downloadICSForRuns(runList, filename) { downloadFile(icsForRuns(runList), 'text/calendar', filename); }
 
   /* ---------- generic helpers ---------- */
 
@@ -288,9 +375,9 @@ const Velocity = (() => {
 
   return {
     DAYS, WEEK_MIN, MONTH_MIN, CATEGORIES,
-    loadRuns, typeInfo, typeLabel, pinVisual, statusOf, scheduleLabel, withinScope,
+    loadRuns, runsReady, findRun, typeInfo, typeLabel, pinVisual, statusOf, scheduleLabel, withinScope,
     getRsvp, setRsvp, getPrefs, savePrefs, matchesPrefs, costLabel,
-    icsForRun, downloadICS, nextOccurrence,
+    icsForRun, downloadICS, downloadICSForRuns, downloadFile, nextOccurrence,
     capitalize, formatTime, formatMinutes, parseDateOnly, formatDate, haversineKm, slug,
   };
 })();

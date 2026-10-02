@@ -59,6 +59,19 @@
   </div>
 </div>
 
+<!-- Sign-in sheet (PRD.md §4.8b): only ever opened by a gated action, never on load -->
+<div id="auth-modal" class="modal-overlay" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div id="auth-steps"></div>
+  </div>
+</div>
+
+<!-- Account panel: name, data export, sign out, delete account -->
+<aside id="account-panel" class="panel panel-right" aria-hidden="true">
+  <button id="account-panel-close" class="panel-close" aria-label="Close">&times;</button>
+  <div id="account-content"></div>
+</aside>
+
 <!-- Shared run detail panel (PRD.md §4.5 card hierarchy) -->
 <aside id="run-panel" class="panel panel-left" aria-hidden="true">
   <button id="run-panel-close" class="panel-close" aria-label="Close">&times;</button>
@@ -70,14 +83,18 @@
 <main id="app-root"></main>
 
 <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="config.js"></script>
+<script src="backend.js"></script>
 <script src="data.js"></script>
 <script src="calendar.js"></script>
 <script src="map-helpers.js"></script>
 <script src="landing-map.js"></script>
 <script src="shared-ui.js"></script>
+<script src="auth-ui.js"></script>
 <script src="variant-a.js"></script>
 <script>
   VariantA.mount();
+  AuthUI.init();
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }

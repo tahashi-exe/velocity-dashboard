@@ -46,7 +46,10 @@ const Calendar = (() => {
   function chipHtml(run) {
     const visual = Velocity.pinVisual(run);
     const rsvp = Velocity.getRsvp(run.id);
-    const highlighted = rsvp === 'going' || rsvp === 'interested';
+    // With accounts on, the calendar marks what the user is Going to, and
+    // Interested runs live on their own list instead. Static mode has no such
+    // list, so there Interested keeps its highlight here.
+    const highlighted = rsvp === 'going' || (!Backend.enabled && rsvp === 'interested');
     return `
       <button type="button" class="cal-chip${highlighted ? ' cal-chip-highlight' : ''}" data-run-id="${run.id}">
         <span class="cal-chip-dot color-${visual.base}${visual.ring ? ' has-ring' : ''}"></span>

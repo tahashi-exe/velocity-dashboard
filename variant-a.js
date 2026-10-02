@@ -9,6 +9,7 @@ const EXPLORE_LOCKED = ['Yoga', 'Pilates', 'Badminton', 'Padel', 'Cycling'];
 const VariantA = (() => {
   let runs = [], map, markers = [], scope = 'week', typeFilter = 'all', matchPrefs = false, freeOnly = false;
   let runNowPool = [], runNowUsingSoon = false, runNowUserLoc = null, runNowSortMode = 'time';
+  let calMine = false;
 
   function mount() {
     const root = document.getElementById('app-root');
@@ -28,8 +29,10 @@ const VariantA = (() => {
             <button type="button" class="icon-btn" id="more-btn" aria-label="More" aria-expanded="false">&#8942;</button>
             <div class="more-menu" id="more-menu">
               <button type="button" class="more-menu-item" id="cal-btn">&#128197; Calendar</button>
+              <button type="button" class="more-menu-item" id="interested-btn" hidden>&#11088; Interested</button>
               <button type="button" class="more-menu-item" id="explore-btn">&#129517; Explore</button>
               <button type="button" class="more-menu-item" id="profile-btn">&#128100; Profile</button>
+              <button type="button" class="more-menu-item" id="account-btn" hidden></button>
               <a class="more-menu-item" href="privacy.html">&#128196; Privacy &amp; terms</a>
             </div>
           </div>
@@ -61,7 +64,14 @@ const VariantA = (() => {
       <aside id="cal-panel" class="panel panel-right" aria-hidden="true">
         <button class="panel-close" id="cal-panel-close">&times;</button>
         <div class="run-title" style="margin-top:6px;">Calendar</div>
+        <div id="cal-panel-controls"></div>
         <div id="cal-panel-body"></div>
+      </aside>
+
+      <aside id="interested-panel" class="panel panel-right" aria-hidden="true">
+        <button class="panel-close" id="interested-panel-close">&times;</button>
+        <div class="run-title" style="margin-top:6px;">Interested</div>
+        <div id="interested-body"></div>
       </aside>
 
       <aside id="runnow-panel" class="panel panel-left" aria-hidden="true">
@@ -78,6 +88,13 @@ const VariantA = (() => {
     `;
 
     map = MapHelper.createMap('map-a');
+    // MapLibre measures its container once at creation and ignores the first
+    // resize notification after that. A page that loads while it isn't on
+    // screen (a tab opened in the background) can measure nothing, fall back
+    // to MapLibre's 400x300 default and stay there, so re-measure when shown.
+    const remeasure = () => { if (!document.hidden) map.resize(); };
+    document.addEventListener('visibilitychange', remeasure);
+    window.addEventListener('pageshow', remeasure);
     SharedUI.initLanding(() => {});
 
     SharedUI.wireTypeFilter(document.getElementById('type-filter-row'), (key) => { typeFilter = key; render(); });
@@ -135,11 +152,25 @@ const VariantA = (() => {
 
     document.getElementById('cal-btn').addEventListener('click', () => {
       moreMenu.classList.remove('open');
-      document.getElementById('cal-panel-body').innerHTML = '';
-      document.getElementById('cal-panel-body').appendChild(Calendar.buildGrid(runs, scope, SharedUI.openRunDetail, true));
-      SharedUI.openPanel(document.getElementById('cal-panel'));
+      openCalendar(false);
     });
     document.getElementById('cal-panel-close').addEventListener('click', SharedUI.closeAllPanels);
+    // Fired by AuthUI: from the Account panel, and when a guest who tapped
+    // "My runs" finishes signing in.
+    document.addEventListener('velocity:open-calendar', (e) => openCalendar(!!(e.detail && e.detail.mine)));
+    document.addEventListener('velocity:auth-changed', () => {
+      if (document.getElementById('cal-panel').classList.contains('open')) renderCalendar();
+      if (!document.getElementById('interested-panel').classList.contains('open')) return;
+      if (Backend.user()) renderInterested(); else SharedUI.closeAllPanels();
+    });
+
+    // Through the gate: a guest gets the sign-in sheet first.
+    document.getElementById('interested-btn').addEventListener('click', () => {
+      moreMenu.classList.remove('open');
+      AuthUI.require({ type: 'interested' }, 'Sign in to see your Interested list');
+    });
+    document.getElementById('interested-panel-close').addEventListener('click', SharedUI.closeAllPanels);
+    document.addEventListener('velocity:open-interested', openInterested);
 
     document.getElementById('profile-btn').addEventListener('click', () => {
       moreMenu.classList.remove('open');
@@ -160,6 +191,106 @@ const VariantA = (() => {
     document.addEventListener('velocity:prefs-changed', render);
 
     Velocity.loadRuns().then(data => { runs = data; render(); });
+  }
+
+  /* ---------- Interested list (PRD.md §4.8b) ----------
+     The signed-in user's saved runs, like a wishlist: everything they tapped
+     Interested on and haven't yet decided Going or Not going for. */
+
+  function openInterested() {
+    renderInterested();
+    SharedUI.openPanel(document.getElementById('interested-panel'));
+  }
+
+  function renderInterested() {
+    const body = document.getElementById('interested-body');
+    const now = new Date();
+    const saved = runs
+      .filter(r => Velocity.getRsvp(r.id) === 'interested')
+      .map(r => ({ r, status: Velocity.statusOf(r, now) }))
+      .filter(x => x.status.phase !== 'expired')
+      .sort((a, b) => a.status.minutesDiff - b.status.minutesDiff);
+
+    if (!saved.length) {
+      body.innerHTML = `<div class="empty-state"><div class="emoji">&#11088;</div><p>Nothing saved yet. Tap Interested on a run to keep it here until you decide.</p></div>`;
+      return;
+    }
+
+    body.innerHTML = `
+      <div class="runnow-sub">${saved.length} saved ${saved.length > 1 ? 'runs' : 'run'}. Open one to mark Going.</div>
+      ${saved.map(({ r }) => `
+        <div class="runnow-card interested-card" data-run-id="${r.id}">
+          <button type="button" class="interested-remove" aria-label="Remove ${r.name} from Interested">Remove</button>
+          <span class="runnow-status">${Velocity.scheduleLabel(r)}</span>
+          <div class="runnow-card-name">${r.name}</div>
+          <div class="runnow-meta">${r.location_name}</div>
+          <div class="runnow-meta">${Velocity.typeLabel(r)}</div>
+        </div>
+      `).join('')}
+    `;
+
+    body.querySelectorAll('.interested-card').forEach(card => {
+      const run = runs.find(x => x.id === card.dataset.runId);
+      card.addEventListener('click', () => SharedUI.openRunDetail(run));
+      card.querySelector('.interested-remove').addEventListener('click', async (e) => {
+        e.stopPropagation(); // don't also open the run
+        try {
+          await Velocity.setRsvp(run.id, 'interested'); // tapping the active status clears it
+          SharedUI.toast('Removed from Interested');
+        } catch (err) {
+          SharedUI.toast('Couldn\'t remove that. Try again.');
+        }
+        renderInterested();
+      });
+    });
+  }
+
+  /* ---------- Calendar panel, with "My runs" (PRD.md §4.8b) ----------
+     My runs narrows the same day-band calendar to what the signed-in user
+     marked Going. It's an account feature, so the toggle only exists in
+     backend mode; static mode shows the plain calendar as before. */
+
+  function openCalendar(mine) {
+    calMine = mine;
+    renderCalendar();
+    SharedUI.openPanel(document.getElementById('cal-panel'));
+  }
+
+  function renderCalendar() {
+    const controls = document.getElementById('cal-panel-controls');
+    const body = document.getElementById('cal-panel-body');
+    if (!Backend.user()) calMine = false; // signed out while it was showing
+    const mineRuns = runs.filter(r => Velocity.getRsvp(r.id) === 'going');
+
+    controls.innerHTML = Backend.enabled ? `
+      <div class="filter-toggle-row cal-toggle-row">
+        <button type="button" class="filter-toggle${calMine ? '' : ' active'}" id="cal-all" aria-pressed="${!calMine}">All runs</button>
+        <button type="button" class="filter-toggle${calMine ? ' active' : ''}" id="cal-mine" aria-pressed="${calMine}">My runs</button>
+      </div>
+      ${calMine && mineRuns.length ? '<button type="button" class="ics-btn cal-export" id="cal-export">Add all to calendar</button>' : ''}
+    ` : '';
+
+    body.innerHTML = '';
+    if (calMine && !mineRuns.length) {
+      body.innerHTML = `<div class="empty-state"><div class="emoji">&#128197;</div><p>Nothing planned yet. Mark a run Going and it shows up here.</p></div>`;
+    } else {
+      body.appendChild(Calendar.buildGrid(calMine ? mineRuns : runs, scope, SharedUI.openRunDetail, true));
+    }
+
+    if (!Backend.enabled) return;
+    document.getElementById('cal-all').addEventListener('click', () => { calMine = false; renderCalendar(); });
+    // Through the gate: a guest gets the sign-in sheet, and lands back here
+    // on My runs once they're in.
+    document.getElementById('cal-mine').addEventListener('click', () => {
+      AuthUI.require({ type: 'myruns' }, 'Sign in to see your runs');
+    });
+    const exportBtn = document.getElementById('cal-export');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        Velocity.downloadICSForRuns(mineRuns, 'my-velocity-runs.ics');
+        SharedUI.toast('Calendar file downloaded');
+      });
+    }
   }
 
   // Names the filter that actually emptied the list. The free-filter case gets

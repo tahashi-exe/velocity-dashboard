@@ -1048,7 +1048,10 @@ button:active, .rsvp-btn:active, .scope-btn:active {
 }
 .rsvp-btn.rsvp-going.active { background: var(--purple); border-color: var(--purple); color: white; }
 .rsvp-btn.rsvp-interested.active { background: var(--lime); border-color: var(--lime); color: var(--purple-dark); }
-.rsvp-btn.rsvp-not_interested.active, .rsvp-btn.rsvp-not_going.active { background: var(--text-muted); border-color: var(--text-muted); color: white; }
+/* Interested is the save-for-later option: a star that fills once saved. */
+.rsvp-btn.rsvp-interested::before { content: '\2606\00A0'; }
+.rsvp-btn.rsvp-interested.active::before { content: '\2605\00A0'; }
+.rsvp-btn.rsvp-not_going.active { background: var(--text-muted); border-color: var(--text-muted); color: white; }
 
 /* ---------- Variant A: sheet title ---------- */
 .sheet-title-row {
@@ -1241,6 +1244,165 @@ button:active, .rsvp-btn:active, .scope-btn:active {
 }
 
 /* ---------- Reduced motion (apple-design §14) ---------- */
+/* =====================================================================
+   Accounts (PRD.md §4.8b): sign-in sheet, RSVP totals, My runs, Account.
+   Only rendered when config.js has a backend. Reuses the onboarding
+   modal's card, inputs and buttons so the sheet reads as part of the app.
+   ===================================================================== */
+
+/* .more-menu-item's display:flex would otherwise beat the hidden attribute
+   that keeps the Sign in / Account entry out of the menu in static mode. */
+.more-menu-item[hidden] { display: none; }
+
+/* Sign-in sheet */
+.auth-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.auth-provider:disabled { opacity: 0.6; cursor: default; }
+/* Google and Apple each publish a required look for their button. */
+.auth-google { background: #FFFFFF; color: #1F1F1F; border: 1px solid #747775; }
+.auth-apple { background: #000000; color: #FFFFFF; border: 1px solid #000000; }
+
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.auth-wide { width: 100%; padding: 13px 22px; font-size: 15px; }
+.auth-wide:disabled { opacity: 0.6; cursor: default; }
+
+.auth-code {
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+.auth-code::placeholder { letter-spacing: normal; font-size: 15px; }
+
+.auth-hint {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--purple-tint);
+  color: var(--purple-dark);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.auth-error {
+  min-height: 18px;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #B91C1C;
+}
+
+.auth-fine {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.auth-fine a { color: var(--purple); font-weight: 600; }
+
+.auth-nav { margin-top: 14px; }
+
+/* Run detail: totals and the "this isn't registration" reminder */
+.rsvp-counts { margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--purple-dark); }
+.rsvp-counts:empty { display: none; }
+.rsvp-note { margin-top: 6px; font-size: 12px; font-weight: 400; line-height: 1.45; color: var(--text-muted); }
+
+/* Calendar: All runs / My runs */
+button.filter-toggle { font-family: inherit; color: var(--text); }
+.cal-toggle-row { margin: 14px 0 4px; }
+.cal-export { margin: 10px 0 0; }
+#cal-panel-controls:not(:empty) { margin-bottom: 14px; }
+
+/* Interested list: the Run Now card, plus a way to take a run off the list */
+.interested-card { position: relative; padding-right: 86px; }
+.interested-remove {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* Account panel */
+.account-head { display: flex; align-items: center; gap: 14px; margin: 6px 0 4px; padding-right: 28px; }
+.account-head-text { min-width: 0; }
+.account-head .run-title { margin: 0 0 2px; overflow-wrap: anywhere; }
+.account-head .run-location { margin: 0; overflow-wrap: anywhere; }
+.account-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.account-avatar-initial {
+  display: grid;
+  place-items: center;
+  background: var(--purple);
+  color: var(--lime);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+}
+.account-section { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--border); }
+.account-section .filter-section-title { display: block; margin-top: 16px; }
+.account-section .ob-input { margin-bottom: 0; }
+.account-delete-link {
+  margin-top: 14px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #B91C1C;
+  cursor: pointer;
+}
+.account-confirm p { margin: 8px 0 12px; font-size: 13px; font-weight: 400; line-height: 1.5; color: var(--text-muted); }
+.account-delete-btn { background: #B91C1C; color: white; }
+.account-delete-btn:disabled, .ics-btn:disabled { opacity: 0.6; cursor: default; }
+.account-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 24px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.account-legal a { color: var(--text-muted); text-decoration: none; }
+.account-legal a:hover { color: var(--purple); }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 50ms !important; animation-duration: 50ms !important; }
   .landing-pin { animation: none; }
