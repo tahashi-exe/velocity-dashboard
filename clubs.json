@@ -91,5 +91,24 @@
     ],
     "notes": "Run with SRC and Drinks plus socials at Joe and the Juice after",
     "last_updated": "2026-09-09"
+  },
+  {
+    "name": "All In Dubai",
+    "location_name": "Kite Beach",
+    "lat": 25.164808,
+    "lng": 55.207336,
+    "type": "social",
+    "surface": "beach",
+    "freebies": false,
+    "cost": "free",
+    "price": "",
+    "day": "wednesday",
+    "time": "18:00",
+    "link": "https://instagram.com/allin.dubai",
+    "photos": [
+      "https://raw.githubusercontent.com/tahashi-exe/velocity-dashboard/main/club-photos/pkaxt7fr.jpg"
+    ],
+    "notes": "All levels welcome, free for everyone. Also meets Sundays at 17:00.",
+    "last_updated": "2026-10-08"
   }
 ]
